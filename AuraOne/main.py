@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 import hashlib
 from telegram import Update
@@ -38,6 +39,58 @@ SKILLS_DIR = os.path.join(BASE_DIR, "skills")
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 os.makedirs(SKILLS_DIR, exist_ok=True)
 
+# Path to store user → conversation_id mapping
+SESSION_MAP_PATH = os.path.join(SESSIONS_DIR, "user_session_map.json")
+
+
+def _load_session_map() -> dict:
+    """Load the persisted user → conversation_id mapping from disk."""
+    if os.path.exists(SESSION_MAP_PATH):
+        try:
+            with open(SESSION_MAP_PATH, "r") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_session_map(session_map: dict) -> None:
+    """Persist the user → conversation_id mapping to disk."""
+    try:
+        with open(SESSION_MAP_PATH, "w") as f:
+            json.dump(session_map, f)
+    except OSError as e:
+        logger.error(f"Failed to save session map: {e}")
+
+
+def _get_conv_id_for_user(user_id: int) -> str | None:
+    """
+    Return an existing conversation_id for this user if their session
+    folder already exists on disk. Returns None if this is a new user.
+    """
+    session_map = _load_session_map()
+    key = str(user_id)
+    conv_id = session_map.get(key)
+
+    if conv_id:
+        # Verify the session folder actually exists in SESSIONS_DIR
+        session_path = os.path.join(SESSIONS_DIR, conv_id)
+        if os.path.isdir(session_path):
+            return conv_id
+        else:
+            # Stale mapping — session folder was deleted, treat as new user
+            logger.warning(f"Session folder missing for user {user_id}, starting fresh.")
+
+    return None
+
+
+def _register_conv_id_for_user(user_id: int, conv_id: str) -> None:
+    """Save the conversation_id returned by the SDK for this user."""
+    session_map = _load_session_map()
+    session_map[str(user_id)] = conv_id
+    _save_session_map(session_map)
+
+
 # Load persona from persona.txt
 PERSONA_PATH = os.path.join(BASE_DIR, "persona.txt")
 if os.path.exists(PERSONA_PATH):
@@ -51,28 +104,30 @@ else:
         "Respond in a clear, concise, and professional manner, using Malay or English based on the user's input."
     )
 
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
     user = update.effective_user
     await update.message.reply_html(
         rf"Salam {user.mention_html()}! Saya AURA, personal operating system supervisor anda. "
-        rf"Sila hantar sebarang mesej atau pautan (URL) untuk saya periksa menggunakan scrape_web tool."
+        rf"Sila hantar sebarang mesej atau pautan (URL) untuk saya periksa."
     )
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Pass incoming user messages to the Antigravity Agent and respond back."""
     user_message = update.message.text
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-    
+
     # Send typing status
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    
-    # Configure Antigravity Agent with persistence and skills
-    # Generated deterministic 64-character hash of user_id to satisfy 32-character minimum constraint
-    conv_id = hashlib.sha256(f"tg_{user_id}".encode()).hexdigest()
-    config = LocalAgentConfig(
-        conversation_id=conv_id,
+
+    # Check if this user already has a saved session
+    existing_conv_id = _get_conv_id_for_user(user_id)
+
+    # Build config — only pass conversation_id if a valid session already exists
+    config_kwargs = dict(
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(
@@ -82,18 +137,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         policies=[policy.allow_all()],
         system_instructions=SYSTEM_INSTRUCTIONS,
     )
-    
+    if existing_conv_id:
+        config_kwargs["conversation_id"] = existing_conv_id
+
+    config = LocalAgentConfig(**config_kwargs)
+
     try:
         async with Agent(config) as agent:
             response = await agent.chat(user_message)
             response_text = await response.text()
-            
-            # Send the final response to the user
+
+            # If this was a new session, capture and save the SDK-assigned conv_id
+            if not existing_conv_id:
+                new_conv_id = agent.conversation_id
+                if new_conv_id:
+                    _register_conv_id_for_user(user_id, new_conv_id)
+                    logger.info(f"New session created for user {user_id}: {new_conv_id}")
+
             await update.message.reply_text(response_text)
-            
+
     except Exception as e:
         logger.error(f"Error handling message: {e}", exc_info=True)
         await update.message.reply_text(f"Minta maaf bos, ralat berlaku: {str(e)}")
+
 
 def main():
     """Start the bot."""
@@ -113,6 +179,7 @@ def main():
     # Run the bot
     print("AURA Bot is running... Press Ctrl+C to stop.")
     application.run_polling()
+
 
 if __name__ == '__main__':
     main()
