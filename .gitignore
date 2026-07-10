@@ -1,0 +1,19 @@
+# Virtual environment
+AuraOne/.venv/
+.venv/
+
+# Environment variables (Secrets)
+AuraOne/.env
+.env
+
+# Conversations/sessions history
+AuraOne/sessions/
+sessions/
+
+# Python cache files
+__pycache__/
+AuraOne/__pycache__/
+*.pyc
+
+# OS specific files
+.DS_Store

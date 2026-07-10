@@ -1,0 +1,4 @@
+google-antigravity
+python-telegram-bot
+python-dotenv
+requests
