@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 from telegram import Update
@@ -37,9 +38,11 @@ os.makedirs(SKILLS_DIR, exist_ok=True)
 
 SESSION_MAP_PATH = os.path.join(SESSIONS_DIR, "user_session_map.json")
 
+# ─── Per-user Debug State ─────────────────────────────────────────────────────
+# Stores user_id -> True/False. Default: False (debug off)
+DEBUG_USERS: dict = {}
+
 # ─── Model Config ─────────────────────────────────────────────────────────────
-# Primary: Gemini via Antigravity SDK
-# Fallback: OpenRouter with a cheap model (OpenAI-compatible endpoint)
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", "openai/gpt-4o-mini")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
@@ -65,7 +68,6 @@ def _save_session_map(session_map: dict) -> None:
 
 
 def _get_conv_id_for_user(user_id: int, prefix: str = "") -> str | None:
-    """Return saved conversation_id for a user only if session folder exists."""
     session_map = _load_session_map()
     key = f"{prefix}{user_id}"
     conv_id = session_map.get(key)
@@ -83,10 +85,27 @@ def _register_conv_id_for_user(user_id: int, conv_id: str, prefix: str = "") -> 
     _save_session_map(session_map)
 
 
-# ─── Build Agent Config ────────────────────────────────────────────────────────
+# ─── Response Cleaner ─────────────────────────────────────────────────────────
+
+# Strip markdown headers that expose internal reasoning in normal mode
+_REASONING_PATTERN = re.compile(
+    r"^#{1,3}\s*(Ringkasan Penaakulan|Proses Delegasi|Analisis|Reasoning|"
+    r"Keputusan|Delegation|Tool Call|Internal Analysis|Chain.of.Thought|"
+    r"Debug|Langkah|Delegasi)[^\n]*\n?",
+    re.IGNORECASE | re.MULTILINE
+)
+
+
+def _clean_response(text: str) -> str:
+    """Strip internal reasoning headers for normal (non-debug) users."""
+    cleaned = _REASONING_PATTERN.sub("", text)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+# ─── Build Agent Configs ───────────────────────────────────────────────────────
 
 def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
-    """Primary config: Gemini via LocalAgentConfig."""
     kwargs = dict(
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
@@ -101,17 +120,9 @@ def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
 
 
 def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
-    """Fallback config: OpenRouter (OpenAI-compatible) via LocalOpenAIAgentConfig."""
-    # OpenRouter requires the API key as a Bearer token in the base URL header.
-    # The SDK passes it via the Authorization header automatically when we
-    # use the OpenAI-compatible format: base_url + api_key embedded model name.
-    # We embed the key into the base_url as a workaround for SDK compatibility.
-    base_url = OPENROUTER_BASE_URL
-    model = f"{OPENROUTER_FALLBACK_MODEL}"
-
     kwargs = dict(
-        model=model,
-        base_url=base_url,
+        model=OPENROUTER_FALLBACK_MODEL,
+        base_url=OPENROUTER_BASE_URL,
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
@@ -132,10 +143,9 @@ if os.path.exists(PERSONA_PATH):
         SYSTEM_INSTRUCTIONS = f.read()
 else:
     SYSTEM_INSTRUCTIONS = (
-        "You are AURA (powered by Google Antigravity SDK), a personal operating system supervisor. "
-        "Your role is to act as the conductor/orchestrator of tasks. You have subagent capabilities "
-        "to delegate complex subtasks, and you have access to the scrape_web tool to extract webpage information. "
-        "Respond in a clear, concise, and professional manner, using Malay or English based on the user's input."
+        "You are AURA, a concise personal AI supervisor. "
+        "Reply in short, clear answers. Never show reasoning or internal steps. "
+        "Use emojis naturally. Speak Malay by default."
     )
 
 # ─── Rate Limit Detection ──────────────────────────────────────────────────────
@@ -144,6 +154,7 @@ RATE_LIMIT_SIGNALS = [
     "429", "quota", "rate limit", "resource_exhausted",
     "RESOURCE_EXHAUSTED", "too many requests", "quota exceeded"
 ]
+
 
 def _is_rate_limit_error(error: Exception) -> bool:
     msg = str(error).lower()
@@ -155,19 +166,49 @@ def _is_rate_limit_error(error: Exception) -> bool:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await update.message.reply_html(
-        rf"Salam {user.mention_html()}! Saya <b>AURA</b>, personal operating system supervisor anda. "
+        rf"Salam {user.mention_html()}! Saya <b>AURA</b>, personal AI supervisor anda. "
         rf"Hantar sebarang mesej, arahan, atau pautan untuk saya bantu!"
     )
+
+
+async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle debug mode: /debug on | /debug off"""
+    user_id = update.effective_user.id
+    args = context.args
+
+    if args and args[0].lower() == "on":
+        DEBUG_USERS[user_id] = True
+        await update.message.reply_text(
+            "🔧 *Debug Mode: ON*\n\n"
+            "Saya akan tunjukkan reasoning, tool calls, dan delegation flow dalam setiap jawapan.\n\n"
+            "Taip `/debug off` untuk kembali ke format biasa.",
+            parse_mode="Markdown"
+        )
+    elif args and args[0].lower() == "off":
+        DEBUG_USERS[user_id] = False
+        await update.message.reply_text(
+            "✅ *Debug Mode: OFF*\n\n"
+            "Kembali ke format jawapan standard — ringkas dan bersih.",
+            parse_mode="Markdown"
+        )
+    else:
+        status = "ON 🔧" if DEBUG_USERS.get(user_id) else "OFF ✅"
+        await update.message.reply_text(
+            f"Debug mode sekarang: *{status}*\n\n"
+            f"Untuk tukar:\n`/debug on` — tunjuk reasoning & tool calls\n`/debug off` — format biasa",
+            parse_mode="Markdown"
+        )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
+    is_debug = DEBUG_USERS.get(user_id, False)
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # ── Attempt 1: Gemini (Primary) ──────────────────────────────────────────
+    # ── Attempt 1: Gemini (Primary) ───────────────────────────────────────────
     gemini_conv_id = _get_conv_id_for_user(user_id, prefix="g_")
     gemini_config = _build_gemini_config(gemini_conv_id)
 
@@ -182,23 +223,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     _register_conv_id_for_user(user_id, new_id, prefix="g_")
                     logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
 
-        await update.message.reply_text(response_text)
-        return  # Success — no need for fallback
+        if is_debug:
+            final_text = f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}"
+            await update.message.reply_text(final_text, parse_mode="MarkdownV2")
+        else:
+            await update.message.reply_text(_clean_response(response_text))
+        return
 
     except Exception as gemini_err:
         if _is_rate_limit_error(gemini_err):
-            logger.warning(f"[Gemini] Rate limit hit for user {user_id}. Switching to OpenRouter fallback...")
+            logger.warning(f"[Gemini] Rate limit for user {user_id}. Switching to OpenRouter...")
             await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         else:
-            # Non-rate-limit Gemini error — report to user
             logger.error(f"[Gemini] Error for user {user_id}: {gemini_err}", exc_info=True)
-            await update.message.reply_text(f"Minta maaf bos, ralat berlaku: {str(gemini_err)}")
+            await update.message.reply_text(f"⚠️ Ralat berlaku: {str(gemini_err)}")
             return
 
-    # ── Attempt 2: OpenRouter Fallback ───────────────────────────────────────
+    # ── Attempt 2: OpenRouter Fallback ────────────────────────────────────────
     if not OPENROUTER_API_KEY:
         await update.message.reply_text(
-            "⚠️ Gemini telah mencapai had penggunaan dan OPENROUTER_API_KEY tidak dikonfigurasi dalam .env untuk fallback."
+            "⚠️ Gemini telah mencapai had penggunaan dan OPENROUTER_API_KEY tidak dikonfigurasi."
         )
         return
 
@@ -216,16 +260,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     _register_conv_id_for_user(user_id, new_id, prefix="or_")
                     logger.info(f"[OpenRouter] New session for user {user_id}: {new_id}")
 
-        # Notify user that fallback model is being used
-        await update.message.reply_text(
-            f"_(Nota: Gemini sedang mencapai had penggunaan. Menggunakan model {OPENROUTER_FALLBACK_MODEL} sebagai gantian.)_\n\n{response_text}",
-            parse_mode="Markdown"
-        )
+        if is_debug:
+            final_text = f"🔧 *[DEBUG: OpenRouter — {OPENROUTER_FALLBACK_MODEL}]*\n\n{response_text}"
+            await update.message.reply_text(final_text, parse_mode="Markdown")
+        else:
+            clean = _clean_response(response_text)
+            await update.message.reply_text(
+                f"_({OPENROUTER_FALLBACK_MODEL})_\n\n{clean}",
+                parse_mode="Markdown"
+            )
 
     except Exception as or_err:
         logger.error(f"[OpenRouter] Fallback error for user {user_id}: {or_err}", exc_info=True)
         await update.message.reply_text(
-            f"Minta maaf bos, kedua-dua Gemini dan OpenRouter gagal:\n• Gemini: Had penggunaan\n• OpenRouter: {str(or_err)}"
+            f"⚠️ Kedua-dua model gagal:\n• Gemini: Had penggunaan\n• OpenRouter: {str(or_err)}"
         )
 
 
@@ -239,6 +287,7 @@ def main():
 
     application = Application.builder().token(token).build()
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     logger.info(f"AURA Bot starting. Primary: Gemini | Fallback: OpenRouter ({OPENROUTER_FALLBACK_MODEL})")
