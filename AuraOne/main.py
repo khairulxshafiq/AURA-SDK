@@ -1,5 +1,6 @@
 import os
 import logging
+import hashlib
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -68,8 +69,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     
     # Configure Antigravity Agent with persistence and skills
+    # Generated deterministic 64-character hash of user_id to satisfy 32-character minimum constraint
+    conv_id = hashlib.sha256(f"tg_{user_id}".encode()).hexdigest()
     config = LocalAgentConfig(
-        conversation_id=f"tg_{user_id}",
+        conversation_id=conv_id,
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(
