@@ -30,17 +30,25 @@ except ImportError as e:
 
 from tools import scrape_web
 
-# Ensure save directory exists
-SESSIONS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "sessions")
+# Ensure save and skills directories exist
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
+SKILLS_DIR = os.path.join(BASE_DIR, "skills")
 os.makedirs(SESSIONS_DIR, exist_ok=True)
+os.makedirs(SKILLS_DIR, exist_ok=True)
 
-# Define systems instructions
-SYSTEM_INSTRUCTIONS = """
-You are AURA (powered by Google Antigravity SDK), a personal operating system supervisor. 
-Your role is to act as the conductor/orchestrator of tasks. You have subagent capabilities 
-to delegate complex subtasks, and you have access to the scrape_web tool to extract webpage information. 
-Respond in a clear, concise, and professional manner, using Malay or English based on the user's input.
-"""
+# Load persona from persona.txt
+PERSONA_PATH = os.path.join(BASE_DIR, "persona.txt")
+if os.path.exists(PERSONA_PATH):
+    with open(PERSONA_PATH, "r") as f:
+        SYSTEM_INSTRUCTIONS = f.read()
+else:
+    SYSTEM_INSTRUCTIONS = (
+        "You are AURA (powered by Google Antigravity SDK), a personal operating system supervisor. "
+        "Your role is to act as the conductor/orchestrator of tasks. You have subagent capabilities "
+        "to delegate complex subtasks, and you have access to the scrape_web tool to extract webpage information. "
+        "Respond in a clear, concise, and professional manner, using Malay or English based on the user's input."
+    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
@@ -59,10 +67,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Send typing status
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     
-    # Configure Antigravity Agent with persistence per user
+    # Configure Antigravity Agent with persistence and skills
     config = LocalAgentConfig(
         conversation_id=f"tg_{user_id}",
         save_dir=SESSIONS_DIR,
+        skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(
             enable_subagents=True,
         ),
