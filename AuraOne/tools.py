@@ -204,3 +204,24 @@ def search_web(query: str, num_results: int = 5) -> dict:
         "results": results,
         "count": len(results)
     }
+
+
+def save_user_fact(fact_content: str, category: str = "general") -> str:
+    """Simpan satu fakta penting atau maklumat baru yang dipelajari tentang pengguna (Matrol/Khairulshafiq) atau projek ke dalam memori jangka panjang SQLite.
+    Gunakan tool ini apabila pengguna memberikan info peribadi yang penting untuk diingati di masa hadapan.
+    """
+    import memory
+    success = memory.save_fact(fact_content, category)
+    if success:
+        return f"Berjaya menyimpan fakta baru ke dalam memori: '{fact_content}'"
+    return f"Fakta tersebut sudah wujud di dalam memori."
+
+
+def update_user_preference(key: str, value: str) -> str:
+    """Kemaskini preferensi atau konfigurasi pengguna dalam memori jangka panjang SQLite (cth: owner_name, working_style, dsb).
+    Gunakan tool ini apabila pengguna menukar tetapan atau cara kerja kegemaran mereka.
+    """
+    import memory
+    memory.update_preference(key, value)
+    return f"Berjaya mengemaskini preferensi '{key}' kepada '{value}'."
+

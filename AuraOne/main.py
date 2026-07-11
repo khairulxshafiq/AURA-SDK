@@ -35,7 +35,7 @@ except ImportError as e:
     logger.error("=" * 80)
     raise e
 
-from tools import scrape_url, search_web
+from tools import scrape_url, search_web, save_user_fact, update_user_preference
 
 # ─── Directories ──────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -128,7 +128,17 @@ def _get_dynamic_instructions() -> str:
         f"- Waktu sekarang: {time_str} (Waktu Malaysia, UTC+8)\n"
         f"Sila gunakan maklumat ini sebagai rujukan utama waktu/tarikh semasa.\n\n"
     )
-    return dynamic_prefix + SYSTEM_INSTRUCTIONS
+    
+    # Load Long-term Memory summary from SQLite database
+    try:
+        from memory import get_memory_summary
+        ltm_summary = get_memory_summary()
+        memory_block = ltm_summary + "\n\n"
+    except Exception as e:
+        logger.error(f"Failed to load long-term memory summary: {e}")
+        memory_block = ""
+        
+    return dynamic_prefix + memory_block + SYSTEM_INSTRUCTIONS
 
 
 def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
@@ -136,7 +146,7 @@ def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[scrape_url, search_web],
+        tools=[scrape_url, search_web, save_user_fact, update_user_preference],
         policies=[policy.allow_all()],
         system_instructions=_get_dynamic_instructions(),
     )
@@ -174,7 +184,12 @@ def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[_to_openai_tool(scrape_url), _to_openai_tool(search_web)],
+        tools=[
+            _to_openai_tool(scrape_url),
+            _to_openai_tool(search_web),
+            _to_openai_tool(save_user_fact),
+            _to_openai_tool(update_user_preference),
+        ],
         policies=[policy.allow_all()],
         system_instructions=_get_dynamic_instructions(),
     )
@@ -396,6 +411,15 @@ def main():
     # Start local OpenRouter reverse proxy to inject API keys in localharness requests
     logger.info("Starting local OpenRouter reverse proxy on port 18080...")
     _start_openrouter_proxy(port=18080)
+
+    # Initialize SQLite long-term memory database
+    try:
+        from memory import init_db
+        init_db()
+        logger.info("Long-term SQLite memory database initialized successfully.")
+    except Exception as e:
+        logger.error(f"Failed to initialize long-term memory database on startup: {e}")
+
 
     application = Application.builder().token(token).build()
     application.add_handler(CommandHandler("start", start))
