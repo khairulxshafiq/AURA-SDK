@@ -6,7 +6,7 @@
 ---
 
 ## 📅 Last Updated
-_2026-07-11 18:40_ oleh LUMA
+_2026-07-11 19:05_ oleh LUMA
 
 ---
 
@@ -25,12 +25,12 @@ _2026-07-11 18:40_ oleh LUMA
 - [x] agy wrapper dengan animation
 - [x] AGENTS.md configured
 - [x] Git remote setup
-- [x] Auto-sync dengan Mac (Symlinked development folder with service config)
+- [x] Auto-sync dengan Mac (Dipindahkan service config & venv terus ke projects workspace)
 
 ---
 
 ## 📝 Conversation History Summary
-- **Session #1 (Greeting & Status Check)**: Memulakan chat, check status AURA bot (`aura.service`), sync git repo `/home/ubuntu/AURA-SDK` dengan `/home/ubuntu/projects/AURA-SDK`, and buat symlinks `.env`, `.venv`, dan `sessions` ke development workspace.
+- **Session #1 (Greeting, Sync & Service Migration)**: Memulakan chat, check status AURA bot. Mengalihkan semua fail sebenar (`.env`, `.venv`, `sessions`) dari `/home/ubuntu/AURA-SDK` ke development workspace di `/home/ubuntu/projects/AURA-SDK/AuraOne/`. Mengemaskini `aura.service` untuk point terus ke workspace pembangunan dan memadam klon pendua yang tidak lagi diperlukan.
 
 ---
 
@@ -39,14 +39,14 @@ _2026-07-11 18:40_ oleh LUMA
 |--------|----------|--------|
 | 2026-07-11 | VPS: Tencent Cloud | Sudah sedia ada |
 | 2026-07-11 | Stack: Python + agy SDK | Sesuai dengan Gemini ecosystem |
-| 2026-07-11 | Symlink .env/.venv | Memastikan development folder di `projects/AURA-SDK` boleh run secara standalone dengan config yang betul |
+| 2026-07-11 | Alih Service ke projects/ | Mengelakkan kekeliruan klon pendua, memudahkan code changes di-apply secara langsung |
 
 ---
 
 ## 🎯 Next Actions
-- [ ] Suggest user to update systemd `aura.service` pointing to `~/projects/AURA-SDK/AuraOne`
 - [ ] Build first custom tool in `tools.py`
 - [ ] Start building skill modules
+
 
 
 ---
