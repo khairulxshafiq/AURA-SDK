@@ -104,10 +104,10 @@ def _scrape_native(url: str, max_content_length: int = 30000) -> dict:
     main = soup.find("article") or soup.find("main") or soup.find("body")
     content = ""
     if main:
-        paragraphs = main.find_all(["p", "h2", "h3", "h4", "li"])
-        content = "\n".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+        content = main.get_text(separator="\n", strip=True)
     if len(content) > max_content_length:
         content = content[:max_content_length]
+
 
     images = []
     for img in soup.find_all("img", src=True):
