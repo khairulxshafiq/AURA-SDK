@@ -4,9 +4,12 @@ Welcome to the **AURA-SDK** repository. AURA is an autonomous AI assistant and s
 
 ---
 
-## 🏗️ Architecture & System Overview
+## 🏗️ Architecture & System Overview (Option B: Orchestrator + Subagents)
 
-AURA is designed to be lightweight, modular, and resilient by leveraging Gemini APIs as the primary brain, with OpenRouter as a robust fallback.
+To prevent prompt bloat, high latency, and LLM tool calling hallucinations, AURA is built on the **Supervisor-Worker (Hybrid Orchestration)** model. 
+
+* **Orchestrator/Supervisor (AURA Main)**: Handles the Telegram interface, manages session states, classifies user intents, and routes tasks. It acts as the user's primary interface.
+* **Worker Subagents**: Dynamically spawned by AURA Main using Google Antigravity's native subagent orchestration. Each subagent has a highly focused system instruction set and only a small subset of tools (e.g., only trading tools for the TradingAgent).
 
 ```
                   ┌────────────────────────┐
@@ -15,37 +18,28 @@ AURA is designed to be lightweight, modular, and resilient by leveraging Gemini 
                               │ (Chat/Command)
                               ▼
                   ┌────────────────────────┐
-                  │   Telegram Bot Loop    │
-                  │       (main.py)        │
+                  │      AURA Main         │ (Orchestrator Bot)
+                  │       (main.py)        │ (Primary: Gemini / Fallback: OpenRouter)
                   └───────────┬────────────┘
                               │
-             ┌────────────────┴────────────────┐
-             ▼ (Primary)                       ▼ (Fallback - 429 Rate Limit)
-┌─────────────────────────┐       ┌─────────────────────────┐
-│       Gemini API        │       │    OpenRouter API       │
-│  (Google Antigravity)   │       │   (openai/gpt-4o-mini)  │
-└────────────┬────────────┘       └────────────┬────────────┘
-             │                                 │
-             └────────────────┬────────────────┘
-                              │
-                              ▼
-             ┌─────────────────────────┐
-             │    Tool Registry &      │
-             │       Execution         │
-             │       (tools.py)        │
-             └──────────┬──────────────┘
-                        │
-         ┌──────────────┼──────────────┬──────────────┐
-         ▼              ▼              ▼              ▼
-   ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐
-   │ Firecrawl │  │ Airtable  │  │ Replicate │  │  G-Drive  │
-   │ Scraper   │  │ (Content) │  │  (Flux)   │  │  Storage  │
-   └───────────┘  └───────────┘  └───────────┘  └───────────┘
+             ┌────────────────┼────────────────┐
+             ▼ (Delegates)    ▼ (Delegates)    ▼ (Delegates)
+       ┌───────────┐    ┌───────────┐    ┌───────────┐
+       │ Trading   │    │  Content  │    │    Web    │
+       │ Subagent  │    │ Subagent  │    │ Subagent  │
+       └─────┬─────┘    └─────┬─────┘    └─────┬─────┘
+             │                │                │
+       ┌─────┴─────┐    ┌─────┴─────┐    ┌─────┴─────┐
+       │ yfinance  │    │ Airtable  │    │ Firecrawl │
+       │ technical │    │ Replicate │    │ DDGSearch │
+       └───────────┘    └───────────┘    └───────────┘
 ```
 
 ### 🧠 Multi-LLM Configuration
 * **Primary Brain**: Gemini API configured via `google.antigravity.Agent` using `LocalAgentConfig`.
 * **Fallback Brain**: OpenRouter API (`openai/gpt-4o-mini`). It automatically takes over if Gemini encounters a `RESOURCE_EXHAUSTED` (Rate Limit / Quota) error to ensure 100% bot availability.
+* **Subagent Native Support**: Antigravity is configured with `capabilities=types.CapabilitiesConfig(enable_subagents=True)` enabling AURA to define and invoke isolated subprocess agents seamlessly.
+
 
 ---
 

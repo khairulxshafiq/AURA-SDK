@@ -27,7 +27,7 @@ except ImportError as e:
     logger.error("=" * 80)
     raise e
 
-from tools import scrape_web
+from tools import scrape_url, search_web
 
 # ─── Directories ──────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -110,7 +110,7 @@ def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[scrape_web],
+        tools=[scrape_url, search_web],
         policies=[policy.allow_all()],
         system_instructions=SYSTEM_INSTRUCTIONS,
     )
@@ -126,7 +126,7 @@ def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[scrape_web],
+        tools=[scrape_url, search_web],
         policies=[policy.allow_all()],
         system_instructions=SYSTEM_INSTRUCTIONS,
     )
