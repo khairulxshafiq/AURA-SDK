@@ -2,6 +2,10 @@ import os
 import re
 import json
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import urllib.request
+import urllib.error
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -45,7 +49,7 @@ DEBUG_USERS: dict = {}
 # ─── Model Config ─────────────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
 OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", "openai/gpt-4o-mini")
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENROUTER_BASE_URL = "http://127.0.0.1:18080"
 
 # ─── Session Map Helpers ───────────────────────────────────────────────────────
 
@@ -200,6 +204,65 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+# ─── OpenRouter Local Proxy ──────────────────────────────────────────────────
+
+class OpenRouterProxyHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+        
+        # Inject API Key from env
+        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}"
+        }
+        
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        req = urllib.request.Request(
+            url,
+            data=post_data,
+            headers=headers,
+            method="POST"
+        )
+        
+        try:
+            with urllib.request.urlopen(req) as response:
+                self.send_response(response.status)
+                for key, val in response.headers.items():
+                    if key.lower() not in ('content-encoding', 'transfer-encoding', 'connection'):
+                        self.send_header(key, val)
+                self.end_headers()
+                self.wfile.write(response.read())
+        except urllib.error.HTTPError as e:
+            self.send_response(e.code)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(e.read())
+        except Exception as e:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(str(e).encode('utf-8'))
+
+    def log_message(self, format, *args):
+        # Suppress logging proxy requests to keep stdout clean
+        pass
+
+
+def _start_openrouter_proxy(port: int = 18080):
+    server = HTTPServer(('127.0.0.1', port), OpenRouterProxyHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
+def _send_safe_message(text: str, max_length: int = 4000) -> str:
+    """Guard Telegram message length to avoid BadRequest text too long errors."""
+    if len(text) > max_length:
+        return text[:max_length] + "\n\n⚠️ *(Respon dipotong kerana melebihi had Telegram)*"
+    return text
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
     chat_id = update.effective_chat.id
@@ -224,10 +287,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
 
         if is_debug:
-            final_text = f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}"
+            final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
             await update.message.reply_text(final_text, parse_mode="MarkdownV2")
         else:
-            await update.message.reply_text(_clean_response(response_text))
+            await update.message.reply_text(_send_safe_message(_clean_response(response_text)))
         return
 
     except Exception as gemini_err:
@@ -236,7 +299,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         else:
             logger.error(f"[Gemini] Error for user {user_id}: {gemini_err}", exc_info=True)
-            await update.message.reply_text(f"⚠️ Ralat berlaku: {str(gemini_err)}")
+            await update.message.reply_text(_send_safe_message(f"⚠️ Ralat berlaku: {str(gemini_err)}"))
             return
 
     # ── Attempt 2: OpenRouter Fallback ────────────────────────────────────────
@@ -261,20 +324,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     logger.info(f"[OpenRouter] New session for user {user_id}: {new_id}")
 
         if is_debug:
-            final_text = f"🔧 *[DEBUG: OpenRouter — {OPENROUTER_FALLBACK_MODEL}]*\n\n{response_text}"
+            final_text = _send_safe_message(f"🔧 *[DEBUG: OpenRouter — {OPENROUTER_FALLBACK_MODEL}]*\n\n{response_text}")
             await update.message.reply_text(final_text, parse_mode="Markdown")
         else:
             clean = _clean_response(response_text)
+            final_text = _send_safe_message(f"_({OPENROUTER_FALLBACK_MODEL})_\n\n{clean}")
             await update.message.reply_text(
-                f"_({OPENROUTER_FALLBACK_MODEL})_\n\n{clean}",
+                final_text,
                 parse_mode="Markdown"
             )
 
     except Exception as or_err:
         logger.error(f"[OpenRouter] Fallback error for user {user_id}: {or_err}", exc_info=True)
-        await update.message.reply_text(
+        err_msg = _send_safe_message(
             f"⚠️ Kedua-dua model gagal:\n• Gemini: Had penggunaan\n• OpenRouter: {str(or_err)}"
         )
+        await update.message.reply_text(err_msg)
 
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
@@ -284,6 +349,10 @@ def main():
     if not token or token == "your_telegram_bot_token_here":
         logger.error("TELEGRAM_BOT_TOKEN is not configured in the .env file.")
         return
+
+    # Start local OpenRouter reverse proxy to inject API keys in localharness requests
+    logger.info("Starting local OpenRouter reverse proxy on port 18080...")
+    _start_openrouter_proxy(port=18080)
 
     application = Application.builder().token(token).build()
     application.add_handler(CommandHandler("start", start))
