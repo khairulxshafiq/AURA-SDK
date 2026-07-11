@@ -51,7 +51,7 @@ DEBUG_USERS: dict = {}
 
 # ─── Model Config ─────────────────────────────────────────────────────────────
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", "openai/gpt-4o-mini")
+OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash"))
 OPENROUTER_BASE_URL = "http://127.0.0.1:18080"
 
 # ─── Session Map Helpers ───────────────────────────────────────────────────────
@@ -297,19 +297,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    # ── Attempt 1: Gemini (Primary) ───────────────────────────────────────────
-    gemini_conv_id = _get_conv_id_for_user(user_id, prefix="g_")
-    gemini_config = _build_gemini_config(gemini_conv_id)
+    conv_id = _get_conv_id_for_user(user_id)
+    gemini_config = _build_gemini_config(conv_id)
 
     try:
         async with Agent(gemini_config) as agent:
             response = await agent.chat(user_message)
             response_text = await response.text()
 
-            if not gemini_conv_id:
+            if not conv_id:
                 new_id = agent.conversation_id
                 if new_id:
-                    _register_conv_id_for_user(user_id, new_id, prefix="g_")
+                    _register_conv_id_for_user(user_id, new_id)
                     logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
 
         if is_debug:
@@ -335,18 +334,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    or_conv_id = _get_conv_id_for_user(user_id, prefix="or_")
-    or_config = _build_openrouter_config(or_conv_id)
+    or_config = _build_openrouter_config(conv_id)
 
     try:
         async with Agent(or_config) as agent:
             response = await agent.chat(user_message)
             response_text = await response.text()
 
-            if not or_conv_id:
+            if not conv_id:
                 new_id = agent.conversation_id
                 if new_id:
-                    _register_conv_id_for_user(user_id, new_id, prefix="or_")
+                    _register_conv_id_for_user(user_id, new_id)
                     logger.info(f"[OpenRouter] New session for user {user_id}: {new_id}")
 
         if is_debug:
