@@ -9,6 +9,9 @@ import urllib.error
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
+from google.genai import types as genai_types
+from google.antigravity.tools.tool_runner import ToolWithSchema
+
 
 # Load environment variables
 load_dotenv()
@@ -123,6 +126,28 @@ def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
     return LocalAgentConfig(**kwargs)
 
 
+def _to_openai_tool(fn):
+    """Converts Gemini uppercase type schema to OpenAI-compatible lowercase type schema."""
+    decl = genai_types.FunctionDeclaration.from_callable_with_api_option(
+        callable=fn,
+        api_option="GEMINI_API"
+    )
+    schema = decl.parameters.model_dump(exclude_none=True) if decl.parameters else {"type": "OBJECT", "properties": {}}
+    
+    def _lowercase_types(node):
+        if isinstance(node, dict):
+            if "type" in node and isinstance(node["type"], str):
+                node["type"] = node["type"].lower()
+            for key, val in node.items():
+                _lowercase_types(val)
+        elif isinstance(node, list):
+            for item in node:
+                _lowercase_types(item)
+                
+    _lowercase_types(schema)
+    return ToolWithSchema(fn, schema)
+
+
 def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
     kwargs = dict(
         model=OPENROUTER_FALLBACK_MODEL,
@@ -130,13 +155,14 @@ def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[scrape_url, search_web],
+        tools=[_to_openai_tool(scrape_url), _to_openai_tool(search_web)],
         policies=[policy.allow_all()],
         system_instructions=SYSTEM_INSTRUCTIONS,
     )
     if conv_id:
         kwargs["conversation_id"] = conv_id
     return LocalOpenAIAgentConfig(**kwargs)
+
 
 
 # ─── Load Persona ──────────────────────────────────────────────────────────────
