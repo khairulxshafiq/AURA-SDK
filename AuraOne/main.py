@@ -227,7 +227,26 @@ def _is_rate_limit_error(error: Exception) -> bool:
     return any(sig.lower() in msg for sig in RATE_LIMIT_SIGNALS)
 
 
+# ─── Gemini Keys for Rotation ────────────────────────────────────────────────
+GEMINI_KEYS = []
+main_key = os.environ.get("GEMINI_API_KEY", "")
+if main_key:
+    GEMINI_KEYS.append(main_key)
+for i in range(1, 11):
+    val = os.environ.get(f"GEMINI_API_KEY_{i}", "")
+    if val and val not in GEMINI_KEYS:
+        GEMINI_KEYS.append(val)
+
+# Default fallback if no keys configured
+if not GEMINI_KEYS:
+    GEMINI_KEYS.append("DUMMY_KEY")
+
+current_key_idx = 0
+logger.info(f"Loaded {len(GEMINI_KEYS)} Gemini API keys for rotation.")
+
+
 # ─── Handlers ─────────────────────────────────────────────────────────────────
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -338,7 +357,7 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
+    global current_key_idx
     user_message = update.message.text
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -347,19 +366,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     conv_id = _get_conv_id_for_user(user_id)
-    gemini_config = _build_gemini_config(conv_id)
 
-    try:
-        async with Agent(gemini_config) as agent:
-            response = await agent.chat(user_message)
-            response_text = await response.text()
+    gemini_success = False
+    response_text = ""
+    num_keys = len(GEMINI_KEYS)
 
-            if not conv_id:
-                new_id = agent.conversation_id
-                if new_id:
-                    _register_conv_id_for_user(user_id, new_id)
-                    logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
+    for attempt in range(num_keys):
+        active_key = GEMINI_KEYS[current_key_idx]
+        os.environ["GEMINI_API_KEY"] = active_key
+        gemini_config = _build_gemini_config(conv_id)
 
+        try:
+            logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
+            async with Agent(gemini_config) as agent:
+                response = await agent.chat(user_message)
+                response_text = await response.text()
+
+                if not conv_id:
+                    new_id = agent.conversation_id
+                    if new_id:
+                        _register_conv_id_for_user(user_id, new_id)
+                        logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
+            gemini_success = True
+            break
+        except Exception as gemini_err:
+            if _is_rate_limit_error(gemini_err):
+                logger.warning(f"[Gemini] Rate limit hit for key index {current_key_idx}. Rotating...")
+                current_key_idx = (current_key_idx + 1) % num_keys
+                continue
+            else:
+                logger.error(f"[Gemini] Error for user {user_id}: {gemini_err}", exc_info=True)
+                await _send_telegram_msg(update, _send_safe_message(f"⚠️ Ralat berlaku: {str(gemini_err)}"))
+                return
+
+    if gemini_success:
         if is_debug:
             final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
             await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
@@ -367,15 +407,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, _send_safe_message(_clean_response(response_text)))
         return
 
+    # If we reach here, all Gemini free keys hit rate limits. Fallback to OpenRouter.
+    logger.warning(f"[Gemini] All {num_keys} keys rate limited. Switching to OpenRouter...")
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-    except Exception as gemini_err:
-        if _is_rate_limit_error(gemini_err):
-            logger.warning(f"[Gemini] Rate limit for user {user_id}. Switching to OpenRouter...")
-            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-        else:
-            logger.error(f"[Gemini] Error for user {user_id}: {gemini_err}", exc_info=True)
-            await _send_telegram_msg(update, _send_safe_message(f"⚠️ Ralat berlaku: {str(gemini_err)}"))
-            return
 
 
     # ── Attempt 2: OpenRouter Fallback ────────────────────────────────────────
