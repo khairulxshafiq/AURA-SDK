@@ -17,6 +17,9 @@ Use these blueprints to easily port and integrate each capability into the moder
    - Authentication via Service Account JSON and file list/read/write capabilities in Google Drive folders.
 5. [AI Image Generation Blueprint](image_tools.md)
    - Flux Schnell image generation via Replicate, fallback image generation, and optimized prompt refinement.
+6. [Trading & Market Analysis Blueprint](trading_tools.md)
+   - Stock query routing, technical indicators (RSI/SMA), and CrewAI multi-agent analysis.
+
 
 ## Migration Design to Antigravity SDK (AuraOne)
 

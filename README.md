@@ -65,6 +65,9 @@ AURA is designed to support the following key capabilities (located in `AuraOne/
    * Secure service account authentication to upload, read, and search files inside a designated Google Drive folder.
 5. **AI Image Generation (`image_tools.md`)**
    * Flux Schnell image generation via Replicate API for visual posts.
+6. **Trading & Market Analysis (`trading_tools.md`)**
+   * Stock indicators querying (yfinance), technical trend calculations (RSI, SMA), and multi-agent trading analysis.
+
 
 ---
 
