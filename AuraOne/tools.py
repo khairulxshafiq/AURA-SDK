@@ -225,3 +225,121 @@ def update_user_preference(key: str, value: str) -> str:
     memory.update_preference(key, value)
     return f"Berjaya mengemaskini preferensi '{key}' kepada '{value}'."
 
+
+# ─── Google Drive & Airtable Helpers ──────────────────────────────────────────
+
+GDRIVE_API = "https://www.googleapis.com/drive/v3"
+GDRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+def _get_gdrive_access_token() -> Optional[str]:
+    import json
+    sa_json_str = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
+    if not sa_json_str:
+        return None
+    try:
+        sa_info = json.loads(sa_json_str)
+        from google.oauth2 import service_account
+        import google.auth.transport.requests
+        credentials = service_account.Credentials.from_service_account_info(
+            sa_info,
+            scopes=["https://www.googleapis.com/auth/drive"]
+        )
+        request = google.auth.transport.requests.Request()
+        credentials.refresh(request)
+        return credentials.token
+    except Exception as e:
+        logger.error(f"Failed to get Google Drive access token: {e}")
+        return None
+
+def upload_to_drive(content_bytes: bytes, filename: str, mime_type: str = "image/jpeg", folder_id: str = None) -> dict:
+    import json
+    folder_id = folder_id or os.environ.get("GDRIVE_FOLDER_ID", "1Apv70Qwp2iF0405kn4mmzaB1UmXkWwqM")
+    token = _get_gdrive_access_token()
+    if not token:
+        return {"status": "error", "error": "Google Drive credentials not set"}
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        metadata = json.dumps({
+            "name": filename,
+            "parents": [folder_id],
+        })
+        boundary = b"aura_boundary"
+        body = (
+            b"--" + boundary + b"\r\n"
+            b"Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+            metadata.encode() + b"\r\n"
+            b"--" + boundary + b"\r\n"
+            b"Content-Type: " + mime_type.encode() + b"\r\n\r\n" +
+            content_bytes + b"\r\n"
+            b"--" + boundary + b"--"
+        )
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(
+                f"{GDRIVE_UPLOAD_API}/files",
+                params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
+                content=body,
+                headers={
+                    **headers,
+                    "Content-Type": f"multipart/related; boundary=aura_boundary"
+                }
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        return {
+            "status": "success",
+            "file_id": data.get("id"),
+            "name": data.get("name"),
+            "link": data.get("webViewLink")
+        }
+    except Exception as e:
+        logger.error(f"upload_to_drive error: {e}")
+        return {"status": "error", "error": str(e)}
+
+def save_draft_to_airtable(
+    title: str,
+    caption: str,
+    platform: str = "facebook",
+    style: str = "santai_bercerita",
+    source_url: str = "",
+    image_url: str = "",
+    brand: str = "",
+    created_by: str = "AURA (SDK)",
+    status: str = "Draft"
+) -> dict:
+    import json
+    api_key = os.environ.get("AIRTABLE_API_KEY", "")
+    base_id = os.environ.get("AIRTABLE_BASE_ID", "")
+    table_name = os.environ.get("AIRTABLE_TABLE_NAME", "Content Station")
+    if not api_key or not base_id:
+        return {"status": "error", "error": "Airtable credentials missing"}
+    if not brand:
+        brand = os.environ.get("DEFAULT_BRAND", "Sakluma")
+    url = f"https://api.airtable.com/v0/{base_id}/{table_name}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    fields = {
+        "Title": title,
+        "Caption": caption,
+        "Platform": [platform.title()],
+        "Status": status,
+        "Brand": brand,
+        "Post Link": source_url,
+        "Image URL": image_url,
+        "Content Type": "Article",
+        "Created By": created_by,
+    }
+    fields = {k: v for k, v in fields.items() if v}
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.post(url, headers=headers, json={"fields": fields})
+            resp.raise_for_status()
+            data = resp.json()
+            return {"status": "success", "record_id": data.get("id")}
+    except Exception as e:
+        logger.error(f"Airtable error: {e}")
+        return {"status": "error", "error": str(e)}
+
+

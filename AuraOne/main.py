@@ -4,10 +4,13 @@ import json
 import logging
 import threading
 import datetime
+import time
+import httpx
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.request
 import urllib.error
 from telegram import Update
+
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -356,9 +359,137 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
             raise e
 
 
+async def _process_response_draft(user_id: int, chat_id: int, response_text: str, context, update) -> str:
+    """Parse draft metadata tags from response_text, save the draft in SQLite,
+    send the preview image to Telegram, and return the cleaned response text."""
+    import re
+    import memory
+
+    image_match = re.search(r"\[DRAFT_IMAGE:\s*(https?://[^\s\]]+)\]", response_text, re.IGNORECASE)
+    title_match = re.search(r"\[DRAFT_TITLE:\s*(.+?)\]", response_text, re.IGNORECASE)
+    source_match = re.search(r"\[DRAFT_SOURCE_URL:\s*(https?://[^\s\]]+)\]", response_text, re.IGNORECASE)
+    smart_copy_match = re.search(r"\[DRAFT_SMART_COPY:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+
+    if title_match or smart_copy_match:
+        image_url = image_match.group(1).strip() if image_match else ""
+        title = title_match.group(1).strip() if title_match else "Artikel Tanpa Tajuk"
+        source_url = source_match.group(1).strip() if source_match else ""
+        smart_copy = smart_copy_match.group(1).strip() if smart_copy_match else ""
+
+        # Save draft in SQLite
+        memory.save_draft(
+            user_id=user_id,
+            title=title,
+            smart_copy=smart_copy,
+            image_url=image_url,
+            source_url=source_url
+        )
+        logger.info(f"Saved content draft for user {user_id}: {title}")
+
+        # Send image to Telegram first as a preview
+        if image_url:
+            try:
+                await context.bot.send_photo(chat_id=chat_id, photo=image_url)
+            except Exception as e:
+                logger.warning(f"Could not send photo preview: {e}")
+
+        # Clean response_text from these tags
+        clean_text = response_text
+        clean_text = re.sub(r"\[DRAFT_IMAGE:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r"\[DRAFT_TITLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r"\[DRAFT_SOURCE_URL:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r"\[DRAFT_SMART_COPY:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+
+        # Append confirmation instructions
+        clean_text = clean_text.strip() + "\n\n✍️ *Draf disimpan!* Sila semak preview di atas. Balas `/confirm` atau *confirm* untuk muat naik gambar utama ke Google Drive & simpan ke Airtable."
+        return clean_text
+
+    return response_text
+
+
+async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    import memory
+    draft = memory.get_draft(user_id)
+    if not draft:
+        await update.message.reply_text("⚠️ Tiada draf aktif dijumpai. Sila paste link artikel terlebih dahulu untuk membuat draf baru.")
+        return
+
+    title = draft["title"]
+    smart_copy = draft["smart_copy"]
+    image_url = draft["image_url"]
+    source_url = draft["source_url"]
+
+    # 1. Download image and upload to Google Drive
+    drive_link = ""
+    if image_url:
+        try:
+            logger.info(f"Downloading main image from: {image_url}")
+            async with httpx.AsyncClient(timeout=30) as client:
+                img_resp = await client.get(image_url)
+                img_resp.raise_for_status()
+                img_bytes = img_resp.content
+
+            from tools import upload_to_drive
+            filename = f"aura_{int(time.time())}.jpg"
+            if ".png" in image_url.lower():
+                filename = f"aura_{int(time.time())}.png"
+                mime = "image/png"
+            elif ".webp" in image_url.lower():
+                filename = f"aura_{int(time.time())}.webp"
+                mime = "image/webp"
+            else:
+                mime = "image/jpeg"
+
+            drive_res = upload_to_drive(img_bytes, filename, mime)
+            if drive_res["status"] == "success":
+                drive_link = drive_res["link"]
+                logger.info(f"Image uploaded to Google Drive: {drive_link}")
+            else:
+                logger.error(f"Google Drive upload failed: {drive_res.get('error')}")
+        except Exception as e:
+            logger.error(f"Failed to process image for Google Drive: {e}")
+
+    # 2. Save the draft to Airtable
+    from tools import save_draft_to_airtable
+    final_image_url = drive_link if drive_link else image_url
+
+    airtable_res = save_draft_to_airtable(
+        title=title,
+        caption=smart_copy,
+        platform="facebook",
+        style="santai_bercerita",
+        source_url=source_url,
+        image_url=final_image_url,
+        status="Finalized"
+    )
+
+    if airtable_res["status"] == "success":
+        # Clear draft on success
+        memory.clear_draft(user_id)
+        reply_msg = (
+            f"✅ *Draf Berjaya Disahkan!*\n\n"
+            f"• *Tajuk*: {title}\n"
+            f"• *Google Drive File*: {f'[Buka Gambar]({drive_link})' if drive_link else 'Tiada / Gagal diupload'}\n"
+            f"• *Airtable Record*: Berjaya disimpan [Content Station]\n\n"
+            f"Sedia untuk fasa posting!"
+        )
+        await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")
+    else:
+        await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable: {airtable_res.get('error')}")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_key_idx
     user_message = update.message.text
+    if user_message and user_message.strip().lower() in ["confirm", "confirm draf", "/confirm"]:
+        await confirm_command(update, context)
+        return
+
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     is_debug = DEBUG_USERS.get(user_id, False)
@@ -400,6 +531,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
 
     if gemini_success:
+        response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
         if is_debug:
             final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
             await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
@@ -410,8 +542,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # If we reach here, all Gemini free keys hit rate limits. Fallback to OpenRouter.
     logger.warning(f"[Gemini] All {num_keys} keys rate limited. Switching to OpenRouter...")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
-
 
     # ── Attempt 2: OpenRouter Fallback ────────────────────────────────────────
     if not OPENROUTER_API_KEY:
@@ -433,6 +563,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     _register_conv_id_for_user(user_id, new_id)
                     logger.info(f"[OpenRouter] New session for user {user_id}: {new_id}")
 
+        response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
         if is_debug:
             final_text = _send_safe_message(f"🔧 *[DEBUG: OpenRouter — {OPENROUTER_FALLBACK_MODEL}]*\n\n{response_text}")
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
@@ -440,6 +571,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             clean = _clean_response(response_text)
             final_text = _send_safe_message(f"_({OPENROUTER_FALLBACK_MODEL})_\n\n{clean}")
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
+
 
 
     except Exception as or_err:
@@ -475,7 +607,9 @@ def main():
     application = Application.builder().token(token).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("debug", debug_command))
+    application.add_handler(CommandHandler("confirm", confirm_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
 
     logger.info(f"AURA Bot starting. Primary: Gemini | Fallback: OpenRouter ({OPENROUTER_FALLBACK_MODEL})")
     application.run_polling()

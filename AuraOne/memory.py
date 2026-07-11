@@ -30,6 +30,18 @@ def init_db():
         )
     """)
     
+    # Table for active content drafts
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS drafts (
+            user_id INTEGER PRIMARY KEY,
+            title TEXT,
+            smart_copy TEXT,
+            image_url TEXT,
+            source_url TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    
     # Insert default preferences if empty
     cursor.execute("SELECT COUNT(*) FROM preferences")
     if cursor.fetchone()[0] == 0:
@@ -42,6 +54,51 @@ def init_db():
         
     conn.commit()
     conn.close()
+
+
+def save_draft(user_id: int, title: str, smart_copy: str, image_url: str, source_url: str) -> None:
+    """Save or overwrite the active draft for a user."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO drafts (user_id, title, smart_copy, image_url, source_url, created_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET 
+            title=excluded.title, 
+            smart_copy=excluded.smart_copy, 
+            image_url=excluded.image_url, 
+            source_url=excluded.source_url, 
+            created_at=CURRENT_TIMESTAMP
+    """, (user_id, title, smart_copy, image_url, source_url))
+    conn.commit()
+    conn.close()
+
+
+def get_draft(user_id: int) -> dict | None:
+    """Retrieve the active draft for a user."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT title, smart_copy, image_url, source_url FROM drafts WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {
+            "title": row[0],
+            "smart_copy": row[1],
+            "image_url": row[2],
+            "source_url": row[3]
+        }
+    return None
+
+
+def clear_draft(user_id: int) -> None:
+    """Clear the active draft for a user."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM drafts WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
 
 
 def get_preferences() -> Dict[str, str]:
