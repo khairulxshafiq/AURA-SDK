@@ -3,6 +3,7 @@ import re
 import json
 import logging
 import threading
+import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.request
 import urllib.error
@@ -112,6 +113,24 @@ def _clean_response(text: str) -> str:
 
 # ─── Build Agent Configs ───────────────────────────────────────────────────────
 
+def _get_dynamic_instructions() -> str:
+    """Inject current date, time, and day of the week dynamically into SYSTEM_INSTRUCTIONS."""
+    now = datetime.datetime.now()
+    day_names = ["Isnin", "Selasa", "Rabu", "Khamis", "Jumaat", "Sabtu", "Ahad"]
+    day_of_week = day_names[now.weekday()]
+    time_str = now.strftime("%I:%M %p")
+    date_str = now.strftime("%d %B %Y")
+    
+    dynamic_prefix = (
+        f"PENTING: Maklumat Waktu Semasa Sistem:\n"
+        f"- Hari ini: {day_of_week}\n"
+        f"- Tarikh hari ini: {date_str}\n"
+        f"- Waktu sekarang: {time_str} (Waktu Malaysia, UTC+8)\n"
+        f"Sila gunakan maklumat ini sebagai rujukan utama waktu/tarikh semasa.\n\n"
+    )
+    return dynamic_prefix + SYSTEM_INSTRUCTIONS
+
+
 def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
     kwargs = dict(
         save_dir=SESSIONS_DIR,
@@ -119,7 +138,7 @@ def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
         tools=[scrape_url, search_web],
         policies=[policy.allow_all()],
-        system_instructions=SYSTEM_INSTRUCTIONS,
+        system_instructions=_get_dynamic_instructions(),
     )
     if conv_id:
         kwargs["conversation_id"] = conv_id
@@ -157,7 +176,7 @@ def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
         tools=[_to_openai_tool(scrape_url), _to_openai_tool(search_web)],
         policies=[policy.allow_all()],
-        system_instructions=SYSTEM_INSTRUCTIONS,
+        system_instructions=_get_dynamic_instructions(),
     )
     if conv_id:
         kwargs["conversation_id"] = conv_id
