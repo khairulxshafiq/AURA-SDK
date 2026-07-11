@@ -8,7 +8,9 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.request
 import urllib.error
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
 from dotenv import load_dotenv
 from google.genai import types as genai_types
 from google.antigravity.tools.tool_runner import ToolWithSchema
@@ -323,7 +325,20 @@ def _send_safe_message(text: str, max_length: int = 4000) -> str:
     return text
 
 
+async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
+    """Send Telegram message with markdown support, automatically falling back to plain text if parsing fails."""
+    try:
+        await update.message.reply_text(text, parse_mode=parse_mode)
+    except BadRequest as e:
+        if parse_mode and "can't parse entities" in str(e).lower():
+            logger.warning(f"Telegram Markdown parsing failed, falling back to plain text. Error: {e}")
+            await update.message.reply_text(text)
+        else:
+            raise e
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     user_message = update.message.text
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -347,10 +362,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if is_debug:
             final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
-            await update.message.reply_text(final_text, parse_mode="MarkdownV2")
+            await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
         else:
-            await update.message.reply_text(_send_safe_message(_clean_response(response_text)))
+            await _send_telegram_msg(update, _send_safe_message(_clean_response(response_text)))
         return
+
 
     except Exception as gemini_err:
         if _is_rate_limit_error(gemini_err):
@@ -358,8 +374,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         else:
             logger.error(f"[Gemini] Error for user {user_id}: {gemini_err}", exc_info=True)
-            await update.message.reply_text(_send_safe_message(f"⚠️ Ralat berlaku: {str(gemini_err)}"))
+            await _send_telegram_msg(update, _send_safe_message(f"⚠️ Ralat berlaku: {str(gemini_err)}"))
             return
+
 
     # ── Attempt 2: OpenRouter Fallback ────────────────────────────────────────
     if not OPENROUTER_API_KEY:
@@ -383,21 +400,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if is_debug:
             final_text = _send_safe_message(f"🔧 *[DEBUG: OpenRouter — {OPENROUTER_FALLBACK_MODEL}]*\n\n{response_text}")
-            await update.message.reply_text(final_text, parse_mode="Markdown")
+            await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         else:
             clean = _clean_response(response_text)
             final_text = _send_safe_message(f"_({OPENROUTER_FALLBACK_MODEL})_\n\n{clean}")
-            await update.message.reply_text(
-                final_text,
-                parse_mode="Markdown"
-            )
+            await _send_telegram_msg(update, final_text, parse_mode="Markdown")
+
 
     except Exception as or_err:
         logger.error(f"[OpenRouter] Fallback error for user {user_id}: {or_err}", exc_info=True)
         err_msg = _send_safe_message(
             f"⚠️ Kedua-dua model gagal:\n• Gemini: Had penggunaan\n• OpenRouter: {str(or_err)}"
         )
-        await update.message.reply_text(err_msg)
+        await _send_telegram_msg(update, err_msg)
+
 
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
