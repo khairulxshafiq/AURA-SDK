@@ -536,8 +536,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
             await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
         else:
-            await _send_telegram_msg(update, _send_safe_message(_clean_response(response_text)))
+            await _send_telegram_msg(update, _send_safe_message(_clean_response(response_text)), parse_mode="Markdown")
         return
+
 
     # If we reach here, all Gemini free keys hit rate limits. Fallback to OpenRouter.
     logger.warning(f"[Gemini] All {num_keys} keys rate limited. Switching to OpenRouter...")
