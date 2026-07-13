@@ -8,20 +8,17 @@
 
 ### 1. Interactive Platform Selection & Sub-Options Workflow (Implemented)
 * **Goal**: Shift from bulk platform push to a dynamic, interactive step-by-step content generation workflow.
-* **Flow**:
+* **Flow (Telegram Inline Keyboards & Callbacks)**:
   1. User sends `Scrape <url>`.
-  2. AURA outputs the **Master Article** (paragraph flow, bold title, clean, hashtags, no bullet points) and caches it.
-  3. AURA asks which platform to generate for: `Facebook`, `Threads`, `X`, `Lemon8`, `Instagram`.
-  4. If **Facebook**: AURA asks for **Bercerita (Editorial)** vs **Berita (News)**:
-     - **Bercerita**: Uses a strong CTA hook at the start to catch attention, writes a casual story, and uses `#saklumastory`.
-     - **Berita**: Writes in news report style (starts with location/reporter info like `"Dungun - ..."`) and uses `#saklumanews`.
-  5. If **Threads** or **X**: AURA asks for thread length (**3**, **5**, or **8** parts):
-     - Translates complex topics into neutral, simple, casual rojak BM/EN that everyday Malaysians easily understand.
-     - Numbers them: `1/X`, `2/X` etc.
-     - Intersperse 1-2 engagement questions (CTA rotation not too frequent).
-  6. If **Lemon8**: Generates a long, structured, aesthetic post.
-  7. If **Instagram**: Generates a short, punchy visual caption.
-  8. Once generated, user reviews the draft on Telegram and replies `confirm` to publish.
+  2. AURA outputs the **Master Article** (paragraph flow, bold title, clean, hashtags, no bullet points).
+  3. Attached to the Master Article is an **Inline Keyboard** allowing multiple platform toggles (`[✅] Facebook`, `[⬜] X`, `[⬜] Threads`, etc.) and a `Next ➡️` button.
+  4. Clicking `Next ➡️` triggers sub-options if Facebook/X/Threads are selected:
+     - **Facebook**: Selects **Bercerita (Editorial)** (uses strong CTA hook + `#saklumastory`) vs **Berita (News)** (uses news report lead + `#saklumanews`).
+     - **X / Threads**: Selects thread length (**3**, **5**, or **8** parts) where complex text is translated into simple rojak BM/EN.
+  5. Once sub-options are selected, user clicks `Generate Drafts ⚡`.
+  6. AURA runs the generator for all selected platforms, shows the drafts, and attaches `Confirm & Push [PLATFORM] ✅` buttons for each.
+  7. Clicking a confirm button uploads the image to Google Drive and pushes that specific platform draft to Airtable.
+
 
 ### 2. Airtable Fields Schema Mapping (Fixed)
 * **Status**: Fully aligned with the real `Content Station` base schema:
