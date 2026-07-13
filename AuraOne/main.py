@@ -379,15 +379,16 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         source_url = source_match.group(1).strip() if source_match else ""
         master_article = master_match.group(1).strip() if master_match else ""
         hashtags = hashtags_match.group(1).strip() if hashtags_match else ""
-
         # Save draft in SQLite
+
         memory.save_draft(
             user_id=user_id,
             title=title,
             master_article=master_article,
             hashtags=hashtags,
             image_url=image_url,
-            source_url=source_url
+            source_url=source_url,
+            state=""
         )
         logger.info(f"Saved content draft for user {user_id}: {title}")
 
@@ -413,25 +414,64 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
     return response_text
 
 
-async def _generate_platform_draft(user_id: int, chat_id: int, platform_choice: str, draft: dict, context, update):
+async def _generate_platform_draft(
+    user_id: int, 
+    chat_id: int, 
+    platform_choice: str, 
+    draft: dict, 
+    context, 
+    update,
+    fb_style: str = "",
+    thread_length: int = 0
+):
     global current_key_idx
     plat = platform_choice.lower().strip()
     if plat == "twitter":
         plat = "x"
 
+    # Build the custom prompt based on style choice
+    style_instruction = ""
+    if plat == "facebook":
+        if fb_style == "bercerita":
+            style_instruction = (
+                "Tulis semula dalam gaya BERCERITA (Editorial). Ikuti peraturan berikut secara ketat:\n"
+                "- Mulakan post dengan CTA HOOK yang sangat menarik dan berimpak tinggi untuk membuatkan pembaca berhenti skrol dan membaca.\n"
+                "- Tulis kandungan dalam bentuk perenggan bercerita yang santai dan mengalir.\n"
+                "- Di bahagian bawah sekali, letakkan hashtag yang relevan dan WAJIB sertakan hashtag: #saklumastory"
+            )
+        else:
+            style_instruction = (
+                "Tulis semula dalam gaya BERITA (News Report). Ikuti peraturan berikut secara ketat:\n"
+                "- Mulakan perenggan pertama dengan format laporan berita Malaysia (cth: 'Kuala Lumpur - ...' atau 'Dungun - Seorang lelaki dipercayai...').\n"
+                "- Gunakan laras bahasa pemberitaan yang formal tetapi mudah difahami.\n"
+                "- Di bahagian bawah sekali, letakkan hashtag yang relevan dan WAJIB sertakan hashtag: #saklumanews"
+            )
+    elif plat in ["threads", "x"]:
+        style_instruction = (
+            f"Tulis semula dalam bentuk BEBENANG (Thread) sebanyak tepat {thread_length} bahagian (di-nombor sebagai 1/{thread_length}, 2/{thread_length}, ... hingga {thread_length}/{thread_length}).\n"
+            f"- Terjemahkan fakta artikel asal kepada bahasa rojak santai Malaysia yang sangat mudah difahami oleh pelbagai kaum (Melayu, Cina, India).\n"
+            f"- Jaga nada penulisan agar neutral (tidak berat sebelah).\n"
+            f"- Selang-selikan maklumat dengan soalan ringkas kepada pembaca untuk memancing respon/komen (CTA), tetapi jangan buat pada setiap bahagian bebenang (cukup sekadar 1-2 soalan di tempat yang sesuai).\n"
+            f"- Sertakan hashtag di bahagian akhir bebenang."
+        )
+    elif plat == "lemon8":
+        style_instruction = (
+            "Tulis semula untuk platform Lemon8. Gaya Lemon8 mestilah sangat aesthetic, berstruktur, bermaklumat, dan mempunyai huraian yang lebih panjang (detail) berserta emoji-emoji yang menarik."
+        )
+    elif plat in ["instagram", "ig"]:
+        style_instruction = (
+            "Tulis semula untuk Instagram. Gaya Instagram mestilah pendek, ringkas, padat, visual-driven, dan terus menarik minat pembaca."
+        )
+
     # Build prompt
     prompt = (
-        f"Anda adalah Editor Konten Sakluma. Tulis semula artikel berikut ke dalam gaya hantaran media sosial untuk platform: {plat.upper()}.\n\n"
-        f"Gaya platform:\n"
-        f"- Facebook: Gaya santai, penerangan sederhana panjang, interaktif, dengan emoji bersesuaian.\n"
-        f"- Threads: Gaya conversational (sembang santai), pendek, mengundang komen.\n"
-        f"- X (Twitter): Gaya ringkas, padat, kurang daripada 280 aksara.\n"
-        f"- Lemon8: Gaya aesthetic, bermaklumat, berserta arahan (call to action).\n\n"
-        f"Artikel asal:\n"
+        f"Anda adalah Editor Konten Sakluma. Tugas anda adalah menulis draf hantaran untuk platform {plat.upper()}.\n\n"
+        f"ARAHAN KHAS GAYA PENULISAN:\n{style_instruction}\n\n"
+        f"ARTIKEL ASAL:\n"
         f"Tajuk: {draft['title']}\n"
         f"Kandungan:\n{draft['master_article']}\n\n"
-        f"Hashtags: {draft['hashtags']}\n\n"
-        f"Sila pulangkan draf hantaran untuk {plat.upper()} sahaja, tiada mukadimah atau penerangan lain. Balas dengan format teks terus."
+        f"Hashtags Asal: {draft['hashtags']}\n\n"
+        f"Sila pulangkan draf hantaran untuk {plat.upper()} sahaja, tiada mukadimah, ulasan atau ulasan sampingan. Balas dengan format teks terus."
     )
 
     gemini_success = False
@@ -490,7 +530,7 @@ async def _generate_platform_draft(user_id: int, chat_id: int, platform_choice: 
 
     # Update SQLite draft with platform and generated draft
     import memory
-    memory.update_platform_draft(user_id, plat, response_text)
+    memory.update_platform_draft(user_id, plat, response_text, state="")
 
     # Send the draft back to the user
     reply_msg = (
@@ -687,17 +727,70 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg_clean.startswith("confirm") or msg_clean.startswith("/confirm"):
             await confirm_command(update, context)
             return
-            
-        if msg_clean in ["facebook", "threads", "x", "twitter", "lemon8"]:
 
-            import memory
-            draft = memory.get_draft(user_id)
-            if draft and draft["master_article"]:
-                await update.message.reply_text(f"⏳ Menjana draf khusus untuk platform {msg_clean.upper()}...")
-                await _generate_platform_draft(user_id, chat_id, msg_clean, draft, context, update)
-                return
+        import memory
+        draft = memory.get_draft(user_id)
+        
+        # If we have an active draft, we check the state machine first!
+        if draft and draft["master_article"]:
+            state = draft.get("state", "")
+            
+            # State 1: WAITING_FB_STYLE
+            if state == "WAITING_FB_STYLE":
+                if msg_clean in ["1", "bercerita", "editorial"]:
+                    await update.message.reply_text("⏳ Menjana draf Facebook gaya Bercerita (Editorial)...")
+                    memory.update_platform_draft(user_id, "facebook", "", "")
+                    await _generate_platform_draft(user_id, chat_id, "facebook", draft, context, update, fb_style="bercerita")
+                    return
+                elif msg_clean in ["2", "berita", "news"]:
+                    await update.message.reply_text("⏳ Menjana draf Facebook gaya Berita (News)...")
+                    memory.update_platform_draft(user_id, "facebook", "", "")
+                    await _generate_platform_draft(user_id, chat_id, "facebook", draft, context, update, fb_style="berita")
+                    return
+                else:
+                    await update.message.reply_text("⚠️ Pilihan tidak sah. Sila taip:\n1 untuk **Bercerita** (Editorial)\n2 untuk **Berita** (News)")
+                    return
+
+            # State 2: WAITING_THREAD_LENGTH
+            elif state == "WAITING_THREAD_LENGTH":
+                if msg_clean in ["3", "5", "8"]:
+                    length = int(msg_clean)
+                    plat = draft["selected_platform"] or "threads"
+                    await update.message.reply_text(f"⏳ Menjana bebenang {plat.upper()} sepanjang {length} bahagian...")
+                    await _generate_platform_draft(user_id, chat_id, plat, draft, context, update, thread_length=length)
+                    return
+                else:
+                    await update.message.reply_text("⚠️ Pilihan tidak sah. Sila taip kepanjangan bebenang: **3**, **5**, atau **8**.")
+                    return
+            
+            # Default State: Choosing a platform
+            if msg_clean in ["facebook", "threads", "x", "twitter", "lemon8", "instagram", "ig"]:
+                target_plat = "x" if msg_clean == "twitter" else ("instagram" if msg_clean == "ig" else msg_clean)
+                
+                if target_plat == "facebook":
+                    memory.update_platform_draft(user_id, "facebook", "", "WAITING_FB_STYLE")
+                    await update.message.reply_text(
+                        "Pilih gaya penulisan Facebook boss:\n"
+                        "1. 📖 **Bercerita (Editorial)** - Menyertakan CTA hook di permulaan post, menggunakan hashtag #saklumastory.\n"
+                        "2. 📰 **Berita (News)** - Menggunakan format laporan berita (cth: 'Kuala Lumpur - ...'), menggunakan hashtag #saklumanews.\n\n"
+                        "Sila balas `1` atau `2`."
+                    )
+                    return
+                elif target_plat in ["threads", "x"]:
+                    memory.update_platform_draft(user_id, target_plat, "", "WAITING_THREAD_LENGTH")
+                    await update.message.reply_text(
+                        f"Pilih kepanjangan bebenang ({target_plat.upper()}) boss:\n"
+                        "• Sila balas **3**, **5**, atau **8** twit/post."
+                    )
+                    return
+                else:
+                    # Lemon8 or Instagram
+                    await update.message.reply_text(f"⏳ Menjana draf khusus untuk platform {target_plat.upper()}...")
+                    await _generate_platform_draft(user_id, chat_id, target_plat, draft, context, update)
+                    return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
 
 
     conv_id = _get_conv_id_for_user(user_id)

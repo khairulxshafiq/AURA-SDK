@@ -30,7 +30,7 @@ def init_db():
         )
     """)
     
-    # Recreate drafts table with support for active platform draft selections
+    # Recreate drafts table with support for active platform draft selections and interactive state
     cursor.execute("DROP TABLE IF EXISTS drafts")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drafts (
@@ -42,6 +42,7 @@ def init_db():
             source_url TEXT,
             selected_platform TEXT,
             platform_draft TEXT,
+            state TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -68,7 +69,8 @@ def save_draft(
     image_url: str,
     source_url: str,
     selected_platform: str = "",
-    platform_draft: str = ""
+    platform_draft: str = "",
+    state: str = ""
 ) -> None:
     """Save or overwrite the active draft for a user."""
     conn = sqlite3.connect(DB_PATH)
@@ -76,9 +78,9 @@ def save_draft(
     cursor.execute("""
         INSERT INTO drafts (
             user_id, title, master_article, hashtags, image_url, source_url, 
-            selected_platform, platform_draft, created_at
+            selected_platform, platform_draft, state, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET 
             title=excluded.title, 
             master_article=excluded.master_article, 
@@ -87,24 +89,38 @@ def save_draft(
             source_url=excluded.source_url, 
             selected_platform=excluded.selected_platform, 
             platform_draft=excluded.platform_draft, 
+            state=excluded.state,
             created_at=CURRENT_TIMESTAMP
     """, (
         user_id, title, master_article, hashtags, image_url, source_url,
-        selected_platform, platform_draft
+        selected_platform, platform_draft, state
     ))
     conn.commit()
     conn.close()
 
 
-def update_platform_draft(user_id: int, platform: str, draft_text: str) -> None:
-    """Update only the selected platform and draft text for an existing draft."""
+def update_platform_draft(user_id: int, platform: str, draft_text: str, state: str = "") -> None:
+    """Update only the selected platform, draft text, and state for an existing draft."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         UPDATE drafts 
-        SET selected_platform = ?, platform_draft = ?
+        SET selected_platform = ?, platform_draft = ?, state = ?
         WHERE user_id = ?
-    """, (platform, draft_text, user_id))
+    """, (platform, draft_text, state, user_id))
+    conn.commit()
+    conn.close()
+
+
+def update_draft_state(user_id: int, state: str) -> None:
+    """Update only the state column for a draft."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE drafts 
+        SET state = ?
+        WHERE user_id = ?
+    """, (state, user_id))
     conn.commit()
     conn.close()
 
@@ -116,7 +132,7 @@ def get_draft(user_id: int) -> dict | None:
     cursor.execute("""
         SELECT 
             title, master_article, hashtags, image_url, source_url, 
-            selected_platform, platform_draft 
+            selected_platform, platform_draft, state 
         FROM drafts WHERE user_id = ?
     """, (user_id,))
     row = cursor.fetchone()
@@ -129,9 +145,11 @@ def get_draft(user_id: int) -> dict | None:
             "image_url": row[3],
             "source_url": row[4],
             "selected_platform": row[5],
-            "platform_draft": row[6]
+            "platform_draft": row[6],
+            "state": row[7]
         }
     return None
+
 
 
 
