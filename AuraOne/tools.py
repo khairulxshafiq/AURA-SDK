@@ -333,11 +333,11 @@ def save_draft_to_airtable(
         "Status": status,
         "Brand": brand,
         "Post Link": source_url,
-        "Image URL": image_url,
         "Content Type": "Article",
         "Created By": created_by,
         "Hashtags": hashtags,
-        "Scheduled Time": scheduled_time,
+        "Scheduled Date": scheduled_time,
+        "Image file": [{"url": image_url}] if image_url else None,
         "Gambar": [{"url": image_url}] if image_url else None
     }
     fields = {k: v for k, v in fields.items() if v is not None}
@@ -345,11 +345,28 @@ def save_draft_to_airtable(
         with httpx.Client(timeout=15) as client:
             resp = client.post(url, headers=headers, json={"fields": fields})
             
-            # Self-healing fallback: If the Gambar column doesn't exist yet, retry without it
-            if resp.status_code == 422 and "UNKNOWN_FIELD_NAME" in resp.text and "Gambar" in resp.text:
-                logger.info("Gambar attachment column not found, retrying with only Image URL")
-                fields.pop("Gambar", None)
-                resp = client.post(url, headers=headers, json={"fields": fields})
+            # Smart self-healing fallback for different field existence
+            if resp.status_code == 422 and "UNKNOWN_FIELD_NAME" in resp.text:
+                err_msg = resp.text
+                retry_needed = False
+                
+                if "Gambar" in err_msg and "Gambar" in fields:
+                    logger.info("Gambar column not found in Airtable, removing it.")
+                    fields.pop("Gambar", None)
+                    retry_needed = True
+                    
+                if "Image file" in err_msg and "Image file" in fields:
+                    logger.info("Image file column not found in Airtable, removing it.")
+                    fields.pop("Image file", None)
+                    retry_needed = True
+                    
+                if "Scheduled Date" in err_msg and "Scheduled Date" in fields:
+                    logger.info("Scheduled Date column not found in Airtable, removing it.")
+                    fields.pop("Scheduled Date", None)
+                    retry_needed = True
+
+                if retry_needed:
+                    resp = client.post(url, headers=headers, json={"fields": fields})
                 
             resp.raise_for_status()
             data = resp.json()
@@ -357,3 +374,4 @@ def save_draft_to_airtable(
     except Exception as e:
         logger.error(f"Airtable error: {e}")
         return {"status": "error", "error": str(e)}
+
