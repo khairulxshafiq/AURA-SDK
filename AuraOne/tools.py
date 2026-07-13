@@ -306,8 +306,7 @@ def save_draft_to_airtable(
     brand: str = "",
     created_by: str = "AURA (SDK)",
     status: str = "Draft",
-    ai_caption: str = "",
-    ai_hashtags: str = ""
+    hashtags: str = ""
 ) -> dict:
     import json
     api_key = os.environ.get("AIRTABLE_API_KEY", "")
@@ -336,14 +335,14 @@ def save_draft_to_airtable(
         "Image URL": image_url,
         "Content Type": "Article",
         "Created By": created_by,
-        "AI Caption": ai_caption,
-        "AI Hashtags": ai_hashtags,
+        "Hashtags": hashtags,
     }
     fields = {k: v for k, v in fields.items() if v}
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.post(url, headers=headers, json={"fields": fields})
             resp.raise_for_status()
+
             data = resp.json()
             return {"status": "success", "record_id": data.get("id")}
     except Exception as e:

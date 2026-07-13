@@ -559,14 +559,14 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     res = save_draft_to_airtable(
         title=title,
-        caption=master_article,
+        caption=platform_draft,
         platform=selected_platform,
         source_url=source_url,
         image_url=final_image_url,
         status="Draft",
-        ai_caption=platform_draft,
-        ai_hashtags=hashtags
+        hashtags=hashtags
     )
+
 
     if res["status"] == "success":
         # Clear draft on success
