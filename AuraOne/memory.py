@@ -29,9 +29,21 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Table for storing user live location
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_location (
+            user_id INTEGER PRIMARY KEY,
+            latitude REAL,
+            longitude REAL,
+            address TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
     
     # Recreate drafts table with support for active platform draft selections and interactive state
     cursor.execute("DROP TABLE IF EXISTS drafts")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drafts (
             user_id INTEGER PRIMARY KEY,
@@ -241,3 +253,32 @@ def get_memory_summary() -> str:
             
     summary += "\n(Gunakan maklumat di atas untuk menyesuaikan konteks jawapan dan tindakan anda.)"
     return summary
+
+
+def save_user_location(user_id: int, latitude: float, longitude: float, address: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_location (user_id, latitude, longitude, address, updated_at)
+        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id) DO UPDATE SET
+            latitude=excluded.latitude,
+            longitude=excluded.longitude,
+            address=excluded.address,
+            updated_at=CURRENT_TIMESTAMP
+    """, (user_id, latitude, longitude, address))
+    conn.commit()
+    conn.close()
+
+
+def get_user_location(user_id: int) -> dict:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT latitude, longitude, address, updated_at FROM user_location WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return dict(row)
+    return None
+

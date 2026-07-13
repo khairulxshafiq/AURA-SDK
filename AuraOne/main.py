@@ -910,6 +910,49 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    message = update.message or update.edited_message
+    if not message or not message.location:
+        return
+
+    lat = message.location.latitude
+    lon = message.location.longitude
+
+    logger.info(f"Received location update from user {user_id}: {lat}, {lon}")
+    
+    address = "Lokasi Tidak Diketahui"
+    try:
+        headers = {"User-Agent": "AuraTelegramBot/1.0 (khairulxshafiq)"}
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://nominatim.openstreetmap.org/reverse",
+                params={"lat": lat, "lon": lon, "format": "json"},
+                headers=headers
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                address = data.get("display_name", address)
+    except Exception as e:
+        logger.error(f"Error reverse geocoding location: {e}")
+
+    import memory
+    memory.save_user_location(user_id, lat, lon, address)
+    
+    if update.edited_message:
+        logger.info(f"Quietly updated live location in database: {address}")
+        return
+        
+    reply_text = (
+        f"📍 *Lokasi boss berjaya dikemaskini!*\n\n"
+        f"• *Alamat*: {address}\n"
+        f"• *Koordinat*: `{lat}, {lon}`\n\n"
+        f"Sekarang AURA tahu boss berada di sini. Boss boleh tanya AURA tentang tempat menarik, kedai makan, barang/perkhidmatan berdekatan, atau tanya *\"Saya dekat mana sekarang?\"*! 🗺️"
+    )
+    await _send_telegram_msg(update, reply_text, parse_mode="Markdown")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_key_idx
     user_message = update.message.text
@@ -922,6 +965,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg_clean.startswith("confirm") or msg_clean.startswith("/confirm"):
             await confirm_command(update, context)
             return
+
+        import memory
+        loc = memory.get_user_location(user_id)
+        if loc:
+            user_message += (
+                f"\n\n[SISTEM: Lokasi semasa user ialah {loc['address']} (Lat: {loc['latitude']}, Lon: {loc['longitude']}). "
+                f"Gunakan maklumat ini jika user mencari kedai makan, barang, tukang urut, rating, arah, atau jika bertanya 'saya dekat mana sekarang'. "
+                f"Untuk carian kedai/barang, gunakan kebolehan Search Web / Google Search yang anda miliki untuk mencari tempat terdekat dengan koordinat ini.]"
+            )
+
 
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
@@ -1049,7 +1102,10 @@ def main():
     application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(CommandHandler("confirm", confirm_command))
     application.add_handler(CallbackQueryHandler(handle_callback_query))
+    application.add_handler(MessageHandler(filters.LOCATION, handle_location))
+    application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
 
 
 
