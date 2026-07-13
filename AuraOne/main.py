@@ -670,47 +670,17 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("⚠️ Tiada draf dijumpai untuk platform ini.", show_alert=True)
             return
 
-        await query.message.reply_text(f"🚀 Memulakan proses memuat naik gambar & menyimpan draf {plat_to_confirm.upper()} ke Airtable...")
+        await query.message.reply_text(f"🚀 Menyimpan draf {plat_to_confirm.upper()} ke Airtable...")
         
-        drive_link = ""
         image_url = draft["image_url"]
-        if image_url:
-            try:
-                logger.info(f"Downloading main image from: {image_url}")
-                async with httpx.AsyncClient(timeout=30) as client:
-                    img_resp = await client.get(image_url)
-                    img_resp.raise_for_status()
-                    img_bytes = img_resp.content
-
-                from tools import upload_to_drive
-                filename = f"aura_{int(time.time())}.jpg"
-                if ".png" in image_url.lower():
-                    filename = f"aura_{int(time.time())}.png"
-                    mime = "image/png"
-                elif ".webp" in image_url.lower():
-                    filename = f"aura_{int(time.time())}.webp"
-                    mime = "image/webp"
-                else:
-                    mime = "image/jpeg"
-
-                drive_res = upload_to_drive(img_bytes, filename, mime)
-                if drive_res["status"] == "success":
-                    drive_link = drive_res["link"]
-                    logger.info(f"Image uploaded to Google Drive: {drive_link}")
-                else:
-                    logger.error(f"Google Drive upload failed: {drive_res.get('error')}")
-            except Exception as e:
-                logger.error(f"Failed to process image for Google Drive: {e}")
-
         from tools import save_draft_to_airtable
-        final_image_url = drive_link if drive_link else image_url
 
         res = save_draft_to_airtable(
             title=draft["title"],
             caption=specific_draft,
             platform=plat_to_confirm,
             source_url=draft["source_url"],
-            image_url=final_image_url,
+            image_url=image_url,
             status="Draft",
             hashtags=draft["hashtags"]
         )
@@ -726,13 +696,13 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 f"✅ *Draf Hantaran {plat_to_confirm.upper()} Berjaya Disahkan!*\n\n"
                 f"• *Tajuk*: {draft['title']}\n"
                 f"• *Platform*: {plat_to_confirm.upper()}\n"
-                f"• *Google Drive File*: {f'[Buka Gambar]({drive_link})' if drive_link else 'Tiada / Gagal diupload'}\n"
                 f"• *Airtable Record*: Berjaya disimpan [Content Station] (Status: Draft) ✈️\n\n"
                 f"Semua draf telah berjaya masuk ke Airtable! Yeayy! 🎉"
             )
             await query.message.reply_text(reply_msg, parse_mode="Markdown")
         else:
             await query.message.reply_text(f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
+
 
 
 async def _process_response_draft(user_id: int, chat_id: int, response_text: str, context, update) -> str:
@@ -904,46 +874,15 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("⚠️ Format tarikh/masa tidak dicam. Hantaran akan dimasukkan ke Airtable dengan status 'Draft' tanpa jadual.")
 
-    # 1. Download image and upload to Google Drive
-    drive_link = ""
-    if image_url:
-        try:
-            logger.info(f"Downloading main image from: {image_url}")
-            async with httpx.AsyncClient(timeout=30) as client:
-                img_resp = await client.get(image_url)
-                img_resp.raise_for_status()
-                img_bytes = img_resp.content
-
-            from tools import upload_to_drive
-            filename = f"aura_{int(time.time())}.jpg"
-            if ".png" in image_url.lower():
-                filename = f"aura_{int(time.time())}.png"
-                mime = "image/png"
-            elif ".webp" in image_url.lower():
-                filename = f"aura_{int(time.time())}.webp"
-                mime = "image/webp"
-            else:
-                mime = "image/jpeg"
-
-            drive_res = upload_to_drive(img_bytes, filename, mime)
-            if drive_res["status"] == "success":
-                drive_link = drive_res["link"]
-                logger.info(f"Image uploaded to Google Drive: {drive_link}")
-            else:
-                logger.error(f"Google Drive upload failed: {drive_res.get('error')}")
-        except Exception as e:
-            logger.error(f"Failed to process image for Google Drive: {e}")
-
-    # 2. Save the draft to Airtable
+    # Save the draft to Airtable
     from tools import save_draft_to_airtable
-    final_image_url = drive_link if drive_link else image_url
 
     res = save_draft_to_airtable(
         title=title,
         caption=platform_draft,
         platform=selected_platform,
         source_url=source_url,
-        image_url=final_image_url,
+        image_url=image_url,
         status=status,
         hashtags=hashtags,
         scheduled_time=scheduled_time_iso
@@ -960,13 +899,13 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• *Tajuk*: {title}\n"
             f"• *Platform*: {selected_platform.upper()}\n"
             f"{sched_info}\n"
-            f"• *Google Drive File*: {f'[Buka Gambar]({drive_link})' if drive_link else 'Tiada / Gagal diupload'}\n"
             f"• *Airtable Record*: Berjaya disimpan [Content Station]\n\n"
             f"Sedia untuk fasa posting!"
         )
         await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")
     else:
         await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
+
 
 
 
