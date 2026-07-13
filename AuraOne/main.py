@@ -13,6 +13,8 @@ from telegram import Update
 
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from typing import Optional
+
 
 from dotenv import load_dotenv
 from google.genai import types as genai_types
@@ -499,6 +501,72 @@ async def _generate_platform_draft(user_id: int, chat_id: int, platform_choice: 
     await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")
 
 
+async def _parse_schedule_time(natural_text: str) -> Optional[str]:
+    """Parse Malaysian/English natural language dates (e.g. 'esok 10 pagi')
+    to ISO 8601 UTC+8 format using a quick Gemini model call."""
+    global current_key_idx
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    day_name = datetime.datetime.now().strftime("%A")
+    prompt = (
+        f"Tukarkan tarikh/masa dalam bahasa semula jadi berikut ke dalam format ISO 8601 (tarikh dan masa penuh, cth: '2026-07-15T14:30:00+08:00' - gunakan zon waktu Asia/Kuala Lumpur UTC+8).\n"
+        f"Waktu sistem sekarang (UTC+8): {now_str}\n"
+        f"Hari ini adalah hari: {day_name}\n\n"
+        f"Input tarikh dari user: \"{natural_text}\"\n\n"
+        f"Sila pulangkan tarikh hasil tukaran sahaja dalam format ISO 8601 (YYYY-MM-DDTHH:MM:SS+08:00). JANGAN letak sebarang perkataan lain, markdown, atau ulasan. Jika tidak sah atau gagal tukar, balas dengan 'NONE'."
+    )
+
+    gemini_success = False
+    response_text = ""
+    num_keys = len(GEMINI_KEYS)
+
+    for attempt in range(num_keys):
+        active_key = GEMINI_KEYS[current_key_idx]
+        os.environ["GEMINI_API_KEY"] = active_key
+
+        try:
+            from google import genai
+            client = genai.Client(api_key=active_key)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            response_text = response.text.strip()
+            gemini_success = True
+            break
+        except Exception as e:
+            if _is_rate_limit_error(e):
+                current_key_idx = (current_key_idx + 1) % num_keys
+                continue
+            else:
+                logger.error(f"[Gemini] Error parsing schedule time: {e}")
+                break
+
+    if not gemini_success and OPENROUTER_API_KEY:
+        try:
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": OPENROUTER_FALLBACK_MODEL,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                if resp.status_code == 200:
+                    response_text = resp.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            logger.error(f"[OpenRouter] Error parsing schedule time fallback: {e}")
+
+    if response_text and response_text.upper() != "NONE":
+        # Extract ISO string using regex if model wraps it in tags
+        iso_match = re.search(r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})?)", response_text)
+        if iso_match:
+            return iso_match.group(1)
+    return None
+
+
+
 async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -522,6 +590,23 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not selected_platform or not platform_draft:
         await update.message.reply_text("⚠️ Sila pilih platform draf terlebih dahulu (cth: taip 'Facebook', 'Threads', 'X', atau 'Lemon8') sebelum melakukan pengesahan.")
         return
+
+    # Check if user message contains scheduling request
+    user_text = update.message.text or ""
+    schedule_match = re.search(r"(?:schedule|scheduling|tarikh|masa|pukul|jam)\s+(.+)", user_text, re.IGNORECASE)
+    scheduled_time_iso = ""
+    status = "Draft"
+
+    if schedule_match:
+        natural_time = schedule_match.group(1).strip()
+        await update.message.reply_text(f"⏳ Meneliti tarikh penjadualan: \"{natural_time}\"...")
+        parsed_iso = await _parse_schedule_time(natural_time)
+        if parsed_iso:
+            scheduled_time_iso = parsed_iso
+            status = "Scheduled"
+            logger.info(f"Parsed schedule time for user {user_id}: {scheduled_time_iso}")
+        else:
+            await update.message.reply_text("⚠️ Format tarikh/masa tidak dicam. Hantaran akan dimasukkan ke Airtable dengan status 'Draft' tanpa jadual.")
 
     # 1. Download image and upload to Google Drive
     drive_link = ""
@@ -563,18 +648,22 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         platform=selected_platform,
         source_url=source_url,
         image_url=final_image_url,
-        status="Draft",
-        hashtags=hashtags
+        status=status,
+        hashtags=hashtags,
+        scheduled_time=scheduled_time_iso
     )
-
 
     if res["status"] == "success":
         # Clear draft on success
         memory.clear_draft(user_id)
+        
+        sched_info = f"• *Status*: Scheduled 📅\n• *Tarikh Siaran*: {scheduled_time_iso}" if status == "Scheduled" else "• *Status*: Draft (Sedia Berlepas) ✈️"
+        
         reply_msg = (
             f"✅ *Draf Hantaran {selected_platform.upper()} Berjaya Disahkan!*\n\n"
             f"• *Tajuk*: {title}\n"
             f"• *Platform*: {selected_platform.upper()}\n"
+            f"{sched_info}\n"
             f"• *Google Drive File*: {f'[Buka Gambar]({drive_link})' if drive_link else 'Tiada / Gagal diupload'}\n"
             f"• *Airtable Record*: Berjaya disimpan [Content Station]\n\n"
             f"Sedia untuk fasa posting!"
@@ -595,11 +684,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_message:
         msg_clean = user_message.strip().lower()
-        if msg_clean in ["confirm", "confirm draf", "/confirm"]:
+        if msg_clean.startswith("confirm") or msg_clean.startswith("/confirm"):
             await confirm_command(update, context)
             return
             
         if msg_clean in ["facebook", "threads", "x", "twitter", "lemon8"]:
+
             import memory
             draft = memory.get_draft(user_id)
             if draft and draft["master_article"]:
