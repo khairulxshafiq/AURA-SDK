@@ -338,19 +338,22 @@ def save_draft_to_airtable(
         "Created By": created_by,
         "Hashtags": hashtags,
         "Scheduled Time": scheduled_time,
+        "Gambar": [{"url": image_url}] if image_url else None
     }
-    fields = {k: v for k, v in fields.items() if v}
+    fields = {k: v for k, v in fields.items() if v is not None}
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.post(url, headers=headers, json={"fields": fields})
+            
+            # Self-healing fallback: If the Gambar column doesn't exist yet, retry without it
+            if resp.status_code == 422 and "UNKNOWN_FIELD_NAME" in resp.text and "Gambar" in resp.text:
+                logger.info("Gambar attachment column not found, retrying with only Image URL")
+                fields.pop("Gambar", None)
+                resp = client.post(url, headers=headers, json={"fields": fields})
+                
             resp.raise_for_status()
-
-
             data = resp.json()
             return {"status": "success", "record_id": data.get("id")}
     except Exception as e:
         logger.error(f"Airtable error: {e}")
         return {"status": "error", "error": str(e)}
-
-
-
