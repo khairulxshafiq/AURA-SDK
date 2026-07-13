@@ -305,7 +305,9 @@ def save_draft_to_airtable(
     image_url: str = "",
     brand: str = "",
     created_by: str = "AURA (SDK)",
-    status: str = "Draft"
+    status: str = "Draft",
+    ai_caption: str = "",
+    ai_hashtags: str = ""
 ) -> dict:
     import json
     api_key = os.environ.get("AIRTABLE_API_KEY", "")
@@ -320,16 +322,22 @@ def save_draft_to_airtable(
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
+    
+    # Map platform names nicely
+    plat_name = "X" if platform.lower() in ["twitter", "x"] else platform.title()
+    
     fields = {
         "Title": title,
         "Caption": caption,
-        "Platform": [platform.title()],
+        "Platform": [plat_name],
         "Status": status,
         "Brand": brand,
         "Post Link": source_url,
         "Image URL": image_url,
         "Content Type": "Article",
         "Created By": created_by,
+        "AI Caption": ai_caption,
+        "AI Hashtags": ai_hashtags,
     }
     fields = {k: v for k, v in fields.items() if v}
     try:
@@ -341,5 +349,6 @@ def save_draft_to_airtable(
     except Exception as e:
         logger.error(f"Airtable error: {e}")
         return {"status": "error", "error": str(e)}
+
 
 

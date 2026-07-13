@@ -368,19 +368,34 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
     image_match = re.search(r"\[DRAFT_IMAGE:\s*(https?://[^\s\]]+)\]", response_text, re.IGNORECASE)
     title_match = re.search(r"\[DRAFT_TITLE:\s*(.+?)\]", response_text, re.IGNORECASE)
     source_match = re.search(r"\[DRAFT_SOURCE_URL:\s*(https?://[^\s\]]+)\]", response_text, re.IGNORECASE)
-    smart_copy_match = re.search(r"\[DRAFT_SMART_COPY:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+    master_match = re.search(r"\[DRAFT_MASTER_ARTICLE:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+    fb_match = re.search(r"\[DRAFT_FB:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+    threads_match = re.search(r"\[DRAFT_THREADS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+    twitter_match = re.search(r"\[DRAFT_TWITTER:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+    lemon8_match = re.search(r"\[DRAFT_LEMON8:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+    hashtags_match = re.search(r"\[DRAFT_HASHTAGS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
 
-    if title_match or smart_copy_match:
+    if title_match or master_match or fb_match:
         image_url = image_match.group(1).strip() if image_match else ""
         title = title_match.group(1).strip() if title_match else "Artikel Tanpa Tajuk"
         source_url = source_match.group(1).strip() if source_match else ""
-        smart_copy = smart_copy_match.group(1).strip() if smart_copy_match else ""
+        master_article = master_match.group(1).strip() if master_match else ""
+        fb_draft = fb_match.group(1).strip() if fb_match else ""
+        threads_draft = threads_match.group(1).strip() if threads_match else ""
+        twitter_draft = twitter_match.group(1).strip() if twitter_match else ""
+        lemon8_draft = lemon8_match.group(1).strip() if lemon8_match else ""
+        hashtags = hashtags_match.group(1).strip() if hashtags_match else ""
 
         # Save draft in SQLite
         memory.save_draft(
             user_id=user_id,
             title=title,
-            smart_copy=smart_copy,
+            master_article=master_article,
+            fb_draft=fb_draft,
+            threads_draft=threads_draft,
+            twitter_draft=twitter_draft,
+            lemon8_draft=lemon8_draft,
+            hashtags=hashtags,
             image_url=image_url,
             source_url=source_url
         )
@@ -398,10 +413,15 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         clean_text = re.sub(r"\[DRAFT_IMAGE:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\[DRAFT_TITLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\[DRAFT_SOURCE_URL:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\[DRAFT_SMART_COPY:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_MASTER_ARTICLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_FB:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_THREADS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_TWITTER:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_LEMON8:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_HASHTAGS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
 
         # Append confirmation instructions
-        clean_text = clean_text.strip() + "\n\n✍️ *Draf disimpan!* Sila semak preview di atas. Balas `/confirm` atau *confirm* untuk muat naik gambar utama ke Google Drive & simpan ke Airtable."
+        clean_text = clean_text.strip() + "\n\n✍️ *Draf disimpan!* Sila semak preview di atas. Balas `/confirm` atau *confirm* untuk memuat naik gambar ke Google Drive & tolak 4 draf platform ke Airtable."
         return clean_text
 
     return response_text
@@ -420,7 +440,12 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     title = draft["title"]
-    smart_copy = draft["smart_copy"]
+    master_article = draft["master_article"]
+    fb_draft = draft["fb_draft"]
+    threads_draft = draft["threads_draft"]
+    twitter_draft = draft["twitter_draft"]
+    lemon8_draft = draft["lemon8_draft"]
+    hashtags = draft["hashtags"]
     image_url = draft["image_url"]
     source_url = draft["source_url"]
 
@@ -454,33 +479,60 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Failed to process image for Google Drive: {e}")
 
-    # 2. Save the draft to Airtable
+    # 2. Save the drafts to Airtable for each platform
     from tools import save_draft_to_airtable
     final_image_url = drive_link if drive_link else image_url
 
-    airtable_res = save_draft_to_airtable(
-        title=title,
-        caption=smart_copy,
-        platform="facebook",
-        style="santai_bercerita",
-        source_url=source_url,
-        image_url=final_image_url,
-        status="Finalized"
-    )
+    platforms = [
+        ("facebook", fb_draft),
+        ("threads", threads_draft),
+        ("twitter", twitter_draft),
+        ("lemon8", lemon8_draft)
+    ]
 
-    if airtable_res["status"] == "success":
+    success_platforms = []
+    failed_platforms = []
+
+    for platform_name, platform_caption in platforms:
+        if not platform_caption:
+            continue
+        
+        res = save_draft_to_airtable(
+            title=title,
+            caption=master_article,
+            platform=platform_name,
+            source_url=source_url,
+            image_url=final_image_url,
+            status="Draft",
+            ai_caption=platform_caption,
+            ai_hashtags=hashtags
+        )
+        
+        if res["status"] == "success":
+            success_platforms.append(platform_name.title())
+        else:
+            failed_platforms.append(f"{platform_name.title()}: {res.get('error')}")
+
+    if len(success_platforms) > 0:
         # Clear draft on success
         memory.clear_draft(user_id)
+        
+        success_str = ", ".join(success_platforms)
         reply_msg = (
             f"✅ *Draf Berjaya Disahkan!*\n\n"
             f"• *Tajuk*: {title}\n"
             f"• *Google Drive File*: {f'[Buka Gambar]({drive_link})' if drive_link else 'Tiada / Gagal diupload'}\n"
-            f"• *Airtable Record*: Berjaya disimpan [Content Station]\n\n"
-            f"Sedia untuk fasa posting!"
+            f"• *Airtable Records ({len(success_platforms)}/4)*: Pushed successfully to [Content Station] ({success_str})\n"
         )
+        if failed_platforms:
+            failed_str = "\n".join([f"• {f}" for f in failed_platforms])
+            reply_msg += f"\n⚠️ *Ralat Platform*:\n{failed_str}"
+            
+        reply_msg += "\nSedia untuk fasa posting!"
         await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")
     else:
-        await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable: {airtable_res.get('error')}")
+        await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable:\n" + "\n".join(failed_platforms))
+
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):

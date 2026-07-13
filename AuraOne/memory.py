@@ -30,12 +30,18 @@ def init_db():
         )
     """)
     
-    # Table for active content drafts
+    # Recreate drafts table with support for all social media platforms
+    cursor.execute("DROP TABLE IF EXISTS drafts")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drafts (
             user_id INTEGER PRIMARY KEY,
             title TEXT,
-            smart_copy TEXT,
+            master_article TEXT,
+            fb_draft TEXT,
+            threads_draft TEXT,
+            twitter_draft TEXT,
+            lemon8_draft TEXT,
+            hashtags TEXT,
             image_url TEXT,
             source_url TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -56,20 +62,42 @@ def init_db():
     conn.close()
 
 
-def save_draft(user_id: int, title: str, smart_copy: str, image_url: str, source_url: str) -> None:
+def save_draft(
+    user_id: int,
+    title: str,
+    master_article: str,
+    fb_draft: str,
+    threads_draft: str,
+    twitter_draft: str,
+    lemon8_draft: str,
+    hashtags: str,
+    image_url: str,
+    source_url: str
+) -> None:
     """Save or overwrite the active draft for a user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
-        INSERT INTO drafts (user_id, title, smart_copy, image_url, source_url, created_at)
-        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        INSERT INTO drafts (
+            user_id, title, master_article, fb_draft, threads_draft, 
+            twitter_draft, lemon8_draft, hashtags, image_url, source_url, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET 
             title=excluded.title, 
-            smart_copy=excluded.smart_copy, 
+            master_article=excluded.master_article, 
+            fb_draft=excluded.fb_draft, 
+            threads_draft=excluded.threads_draft, 
+            twitter_draft=excluded.twitter_draft, 
+            lemon8_draft=excluded.lemon8_draft, 
+            hashtags=excluded.hashtags, 
             image_url=excluded.image_url, 
             source_url=excluded.source_url, 
             created_at=CURRENT_TIMESTAMP
-    """, (user_id, title, smart_copy, image_url, source_url))
+    """, (
+        user_id, title, master_article, fb_draft, threads_draft,
+        twitter_draft, lemon8_draft, hashtags, image_url, source_url
+    ))
     conn.commit()
     conn.close()
 
@@ -78,17 +106,28 @@ def get_draft(user_id: int) -> dict | None:
     """Retrieve the active draft for a user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT title, smart_copy, image_url, source_url FROM drafts WHERE user_id = ?", (user_id,))
+    cursor.execute("""
+        SELECT 
+            title, master_article, fb_draft, threads_draft, 
+            twitter_draft, lemon8_draft, hashtags, image_url, source_url 
+        FROM drafts WHERE user_id = ?
+    """, (user_id,))
     row = cursor.fetchone()
     conn.close()
     if row:
         return {
             "title": row[0],
-            "smart_copy": row[1],
-            "image_url": row[2],
-            "source_url": row[3]
+            "master_article": row[1],
+            "fb_draft": row[2],
+            "threads_draft": row[3],
+            "twitter_draft": row[4],
+            "lemon8_draft": row[5],
+            "hashtags": row[6],
+            "image_url": row[7],
+            "source_url": row[8]
         }
     return None
+
 
 
 def clear_draft(user_id: int) -> None:
