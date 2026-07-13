@@ -369,21 +369,13 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
     title_match = re.search(r"\[DRAFT_TITLE:\s*(.+?)\]", response_text, re.IGNORECASE)
     source_match = re.search(r"\[DRAFT_SOURCE_URL:\s*(https?://[^\s\]]+)\]", response_text, re.IGNORECASE)
     master_match = re.search(r"\[DRAFT_MASTER_ARTICLE:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-    fb_match = re.search(r"\[DRAFT_FB:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-    threads_match = re.search(r"\[DRAFT_THREADS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-    twitter_match = re.search(r"\[DRAFT_TWITTER:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-    lemon8_match = re.search(r"\[DRAFT_LEMON8:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
     hashtags_match = re.search(r"\[DRAFT_HASHTAGS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
 
-    if title_match or master_match or fb_match:
+    if title_match or master_match:
         image_url = image_match.group(1).strip() if image_match else ""
         title = title_match.group(1).strip() if title_match else "Artikel Tanpa Tajuk"
         source_url = source_match.group(1).strip() if source_match else ""
         master_article = master_match.group(1).strip() if master_match else ""
-        fb_draft = fb_match.group(1).strip() if fb_match else ""
-        threads_draft = threads_match.group(1).strip() if threads_match else ""
-        twitter_draft = twitter_match.group(1).strip() if twitter_match else ""
-        lemon8_draft = lemon8_match.group(1).strip() if lemon8_match else ""
         hashtags = hashtags_match.group(1).strip() if hashtags_match else ""
 
         # Save draft in SQLite
@@ -391,10 +383,6 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             user_id=user_id,
             title=title,
             master_article=master_article,
-            fb_draft=fb_draft,
-            threads_draft=threads_draft,
-            twitter_draft=twitter_draft,
-            lemon8_draft=lemon8_draft,
             hashtags=hashtags,
             image_url=image_url,
             source_url=source_url
@@ -414,17 +402,101 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         clean_text = re.sub(r"\[DRAFT_TITLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\[DRAFT_SOURCE_URL:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\[DRAFT_MASTER_ARTICLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_FB:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_THREADS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_TWITTER:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_LEMON8:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
         clean_text = re.sub(r"\[DRAFT_HASHTAGS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
 
         # Append confirmation instructions
-        clean_text = clean_text.strip() + "\n\n✍️ *Draf disimpan!* Sila semak preview di atas. Balas `/confirm` atau *confirm* untuk memuat naik gambar ke Google Drive & tolak 4 draf platform ke Airtable."
+        clean_text = clean_text.strip() + "\n\n🤔 *Nak saya buat draf hantaran untuk media sosial mana?*\n(Taip: `Facebook`, `Threads`, `X`, atau `Lemon8` untuk menjana draf platform)"
         return clean_text
 
     return response_text
+
+
+async def _generate_platform_draft(user_id: int, chat_id: int, platform_choice: str, draft: dict, context, update):
+    global current_key_idx
+    plat = platform_choice.lower().strip()
+    if plat == "twitter":
+        plat = "x"
+
+    # Build prompt
+    prompt = (
+        f"Anda adalah Editor Konten Sakluma. Tulis semula artikel berikut ke dalam gaya hantaran media sosial untuk platform: {plat.upper()}.\n\n"
+        f"Gaya platform:\n"
+        f"- Facebook: Gaya santai, penerangan sederhana panjang, interaktif, dengan emoji bersesuaian.\n"
+        f"- Threads: Gaya conversational (sembang santai), pendek, mengundang komen.\n"
+        f"- X (Twitter): Gaya ringkas, padat, kurang daripada 280 aksara.\n"
+        f"- Lemon8: Gaya aesthetic, bermaklumat, berserta arahan (call to action).\n\n"
+        f"Artikel asal:\n"
+        f"Tajuk: {draft['title']}\n"
+        f"Kandungan:\n{draft['master_article']}\n\n"
+        f"Hashtags: {draft['hashtags']}\n\n"
+        f"Sila pulangkan draf hantaran untuk {plat.upper()} sahaja, tiada mukadimah atau penerangan lain. Balas dengan format teks terus."
+    )
+
+    gemini_success = False
+    response_text = ""
+    num_keys = len(GEMINI_KEYS)
+
+    for attempt in range(num_keys):
+        active_key = GEMINI_KEYS[current_key_idx]
+        os.environ["GEMINI_API_KEY"] = active_key
+
+        try:
+            logger.info(f"[Gemini] Generating platform draft using key index {current_key_idx}...")
+            from google import genai
+            client = genai.Client(api_key=active_key)
+            response = client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=prompt,
+            )
+            response_text = response.text
+            gemini_success = True
+            break
+        except Exception as gemini_err:
+            if _is_rate_limit_error(gemini_err):
+                logger.warning(f"[Gemini] Rate limit hit during draft. Rotating...")
+                current_key_idx = (current_key_idx + 1) % num_keys
+                continue
+            else:
+                logger.error(f"[Gemini] Draft generation error: {gemini_err}")
+                break
+
+    if not gemini_success:
+        # Fallback to OpenRouter
+        logger.warning("[Gemini] Draft generation rate limited. Falling back to OpenRouter...")
+        if OPENROUTER_API_KEY:
+            try:
+                headers = {
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": OPENROUTER_FALLBACK_MODEL,
+                    "messages": [{"role": "user", "content": prompt}]
+                }
+                async with httpx.AsyncClient(timeout=30) as client:
+                    resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    response_text = data["choices"][0]["message"]["content"]
+            except Exception as or_err:
+                logger.error(f"[OpenRouter] Draft generation fallback error: {or_err}")
+                await update.message.reply_text("⚠️ Gagal menjana draf secara automatik. Sila cuba sebentar lagi.")
+                return
+        else:
+            await update.message.reply_text("⚠️ Gemini rate limited dan OpenRouter tidak dikonfigurasi.")
+            return
+
+    # Update SQLite draft with platform and generated draft
+    import memory
+    memory.update_platform_draft(user_id, plat, response_text)
+
+    # Send the draft back to the user
+    reply_msg = (
+        f"📝 *Draf Khusus {plat.upper()}:*\n\n"
+        f"{response_text}\n\n"
+        f"Balas `/confirm` atau **confirm** untuk memuat naik gambar utama ke Google Drive & simpan draf {plat.upper()} ke Airtable."
+    )
+    await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")
 
 
 async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -441,13 +513,15 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     title = draft["title"]
     master_article = draft["master_article"]
-    fb_draft = draft["fb_draft"]
-    threads_draft = draft["threads_draft"]
-    twitter_draft = draft["twitter_draft"]
-    lemon8_draft = draft["lemon8_draft"]
     hashtags = draft["hashtags"]
     image_url = draft["image_url"]
     source_url = draft["source_url"]
+    selected_platform = draft["selected_platform"]
+    platform_draft = draft["platform_draft"]
+
+    if not selected_platform or not platform_draft:
+        await update.message.reply_text("⚠️ Sila pilih platform draf terlebih dahulu (cth: taip 'Facebook', 'Threads', 'X', atau 'Lemon8') sebelum melakukan pengesahan.")
+        return
 
     # 1. Download image and upload to Google Drive
     drive_link = ""
@@ -479,74 +553,62 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Failed to process image for Google Drive: {e}")
 
-    # 2. Save the drafts to Airtable for each platform
+    # 2. Save the draft to Airtable
     from tools import save_draft_to_airtable
     final_image_url = drive_link if drive_link else image_url
 
-    platforms = [
-        ("facebook", fb_draft),
-        ("threads", threads_draft),
-        ("twitter", twitter_draft),
-        ("lemon8", lemon8_draft)
-    ]
+    res = save_draft_to_airtable(
+        title=title,
+        caption=master_article,
+        platform=selected_platform,
+        source_url=source_url,
+        image_url=final_image_url,
+        status="Draft",
+        ai_caption=platform_draft,
+        ai_hashtags=hashtags
+    )
 
-    success_platforms = []
-    failed_platforms = []
-
-    for platform_name, platform_caption in platforms:
-        if not platform_caption:
-            continue
-        
-        res = save_draft_to_airtable(
-            title=title,
-            caption=master_article,
-            platform=platform_name,
-            source_url=source_url,
-            image_url=final_image_url,
-            status="Draft",
-            ai_caption=platform_caption,
-            ai_hashtags=hashtags
-        )
-        
-        if res["status"] == "success":
-            success_platforms.append(platform_name.title())
-        else:
-            failed_platforms.append(f"{platform_name.title()}: {res.get('error')}")
-
-    if len(success_platforms) > 0:
+    if res["status"] == "success":
         # Clear draft on success
         memory.clear_draft(user_id)
-        
-        success_str = ", ".join(success_platforms)
         reply_msg = (
-            f"✅ *Draf Berjaya Disahkan!*\n\n"
+            f"✅ *Draf Hantaran {selected_platform.upper()} Berjaya Disahkan!*\n\n"
             f"• *Tajuk*: {title}\n"
+            f"• *Platform*: {selected_platform.upper()}\n"
             f"• *Google Drive File*: {f'[Buka Gambar]({drive_link})' if drive_link else 'Tiada / Gagal diupload'}\n"
-            f"• *Airtable Records ({len(success_platforms)}/4)*: Pushed successfully to [Content Station] ({success_str})\n"
+            f"• *Airtable Record*: Berjaya disimpan [Content Station]\n\n"
+            f"Sedia untuk fasa posting!"
         )
-        if failed_platforms:
-            failed_str = "\n".join([f"• {f}" for f in failed_platforms])
-            reply_msg += f"\n⚠️ *Ralat Platform*:\n{failed_str}"
-            
-        reply_msg += "\nSedia untuk fasa posting!"
         await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")
     else:
-        await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable:\n" + "\n".join(failed_platforms))
+        await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
+
 
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_key_idx
     user_message = update.message.text
-    if user_message and user_message.strip().lower() in ["confirm", "confirm draf", "/confirm"]:
-        await confirm_command(update, context)
-        return
-
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     is_debug = DEBUG_USERS.get(user_id, False)
 
+    if user_message:
+        msg_clean = user_message.strip().lower()
+        if msg_clean in ["confirm", "confirm draf", "/confirm"]:
+            await confirm_command(update, context)
+            return
+            
+        if msg_clean in ["facebook", "threads", "x", "twitter", "lemon8"]:
+            import memory
+            draft = memory.get_draft(user_id)
+            if draft and draft["master_article"]:
+                await update.message.reply_text(f"⏳ Menjana draf khusus untuk platform {msg_clean.upper()}...")
+                await _generate_platform_draft(user_id, chat_id, msg_clean, draft, context, update)
+                return
+
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
 
     conv_id = _get_conv_id_for_user(user_id)
 

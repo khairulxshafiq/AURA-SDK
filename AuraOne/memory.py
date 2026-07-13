@@ -30,20 +30,18 @@ def init_db():
         )
     """)
     
-    # Recreate drafts table with support for all social media platforms
+    # Recreate drafts table with support for active platform draft selections
     cursor.execute("DROP TABLE IF EXISTS drafts")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drafts (
             user_id INTEGER PRIMARY KEY,
             title TEXT,
             master_article TEXT,
-            fb_draft TEXT,
-            threads_draft TEXT,
-            twitter_draft TEXT,
-            lemon8_draft TEXT,
             hashtags TEXT,
             image_url TEXT,
             source_url TEXT,
+            selected_platform TEXT,
+            platform_draft TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
@@ -66,38 +64,47 @@ def save_draft(
     user_id: int,
     title: str,
     master_article: str,
-    fb_draft: str,
-    threads_draft: str,
-    twitter_draft: str,
-    lemon8_draft: str,
     hashtags: str,
     image_url: str,
-    source_url: str
+    source_url: str,
+    selected_platform: str = "",
+    platform_draft: str = ""
 ) -> None:
     """Save or overwrite the active draft for a user."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO drafts (
-            user_id, title, master_article, fb_draft, threads_draft, 
-            twitter_draft, lemon8_draft, hashtags, image_url, source_url, created_at
+            user_id, title, master_article, hashtags, image_url, source_url, 
+            selected_platform, platform_draft, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET 
             title=excluded.title, 
             master_article=excluded.master_article, 
-            fb_draft=excluded.fb_draft, 
-            threads_draft=excluded.threads_draft, 
-            twitter_draft=excluded.twitter_draft, 
-            lemon8_draft=excluded.lemon8_draft, 
             hashtags=excluded.hashtags, 
             image_url=excluded.image_url, 
             source_url=excluded.source_url, 
+            selected_platform=excluded.selected_platform, 
+            platform_draft=excluded.platform_draft, 
             created_at=CURRENT_TIMESTAMP
     """, (
-        user_id, title, master_article, fb_draft, threads_draft,
-        twitter_draft, lemon8_draft, hashtags, image_url, source_url
+        user_id, title, master_article, hashtags, image_url, source_url,
+        selected_platform, platform_draft
     ))
+    conn.commit()
+    conn.close()
+
+
+def update_platform_draft(user_id: int, platform: str, draft_text: str) -> None:
+    """Update only the selected platform and draft text for an existing draft."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE drafts 
+        SET selected_platform = ?, platform_draft = ?
+        WHERE user_id = ?
+    """, (platform, draft_text, user_id))
     conn.commit()
     conn.close()
 
@@ -108,8 +115,8 @@ def get_draft(user_id: int) -> dict | None:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT 
-            title, master_article, fb_draft, threads_draft, 
-            twitter_draft, lemon8_draft, hashtags, image_url, source_url 
+            title, master_article, hashtags, image_url, source_url, 
+            selected_platform, platform_draft 
         FROM drafts WHERE user_id = ?
     """, (user_id,))
     row = cursor.fetchone()
@@ -118,15 +125,14 @@ def get_draft(user_id: int) -> dict | None:
         return {
             "title": row[0],
             "master_article": row[1],
-            "fb_draft": row[2],
-            "threads_draft": row[3],
-            "twitter_draft": row[4],
-            "lemon8_draft": row[5],
-            "hashtags": row[6],
-            "image_url": row[7],
-            "source_url": row[8]
+            "hashtags": row[2],
+            "image_url": row[3],
+            "source_url": row[4],
+            "selected_platform": row[5],
+            "platform_draft": row[6]
         }
     return None
+
 
 
 
