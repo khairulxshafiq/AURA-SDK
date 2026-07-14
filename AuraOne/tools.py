@@ -346,7 +346,7 @@ def save_draft_to_airtable(
     fields = {k: v for k, v in fields.items() if v is not None}
     try:
         with httpx.Client(timeout=15) as client:
-            resp = client.post(url, headers=headers, json={"fields": fields})
+            resp = client.post(url, headers=headers, json={"fields": fields, "typecast": True})
             
             # Smart self-healing fallback for different field existence
             if resp.status_code == 422 and "UNKNOWN_FIELD_NAME" in resp.text:
@@ -369,7 +369,7 @@ def save_draft_to_airtable(
                     retry_needed = True
 
                 if retry_needed:
-                    resp = client.post(url, headers=headers, json={"fields": fields})
+                    resp = client.post(url, headers=headers, json={"fields": fields, "typecast": True})
                 
             resp.raise_for_status()
             data = resp.json()
@@ -377,4 +377,5 @@ def save_draft_to_airtable(
     except Exception as e:
         logger.error(f"Airtable error: {e}")
         return {"status": "error", "error": str(e)}
+
 
