@@ -22,14 +22,18 @@
 ### 2. Airtable Fields Schema Mapping & Typecasting (Fixed)
 * **Status**: Fully aligned with the real `Content Station` base schema.
 * **Self-Healing Select Choices (`typecast: True`)**: Enabled `typecast: True` in all Airtable POST record requests, allowing automatic creation of missing options (like Threads or Lemon8) directly inside Airtable columns.
-* **Image Attachments**: Resolved 403 Forbidden hotlink blocks by downloading images with a custom User-Agent, uploading to Google Drive as public files, and passing the direct public download URL (`https://docs.google.com/uc?export=download&id=...`) to Airtable's attachment field (`Image file` / `Gambar`).
+* **Image Attachments & Telegram Cache Bypass**: Resolved the Akamai/Cloudflare `403 Forbidden` hotlink block (which blocked direct downloading by the VPS IP). AURA now downloads the cached image file ID from Telegram's servers (`context.bot.get_file`), which is 100% immune to datacenter blocks. The downloaded file is uploaded to Google Drive as a public file, and the direct public download URL (`https://docs.google.com/uc?export=download&id=...`) is passed to Airtable's attachment field (`Image file` / `Gambar`) which downloads and attaches the image successfully.
 * **Post Link**: Removed writing to `Post Link` (news source URL) as requested by the user.
 
-### 3. Telegram Robust Link Rendering & Length Cleanup
+### 3. Google Drive Scraped Article Text Dump (Implemented)
+* **Goal**: Keep a history log of all scraped articles and drafts in Google Drive.
+* **Flow**: Every time AURA scrapes an article, it formats a text dump containing the Source URL, Title, Hashtags, Master Article, and all generated platform drafts (Facebook, Threads, X, Lemon8). It standardizes the filename (e.g. `web-1.txt`, matching the image `web-1.jpg`) and uploads it to the `Dump File` folder (ID: `1dbUHkxDdAfxvJhzveHU9kTvQN27GrmFG`) inside the `AuraAgent-SDK` Google Drive monorepo folder.
+
+### 4. Telegram Robust Link Rendering & Length Cleanup
 * **Markdown-to-HTML Converter**: Rewrote `_send_telegram_msg` to automatically convert Markdown bold (`**`) and links (`[Text](URL)`) to HTML, sending via Telegram HTML mode. This hides URLs behind "Baca Sini" text safely, avoiding Telegram Markdown parser breaking on URLs containing underscores (`_`) or other special characters.
 * **Length Limit Cleanup**: Screened and cleaned up all long draft metadata blocks (`[DRAFT_FB]`, `[DRAFT_THREADS]`, etc.) from the initial scraping response, ensuring Telegram message size fits beautifully within the 4,096 character limit.
 
-### 4. Registered Telegram Location Handlers
+### 5. Registered Telegram Location Handlers
 * **Goal**: Track user coordinates, reverse-geocode via Nominatim OpenStreetMap, and inject the live location address into system instructions context so AURA can perform local recommendations (e.g. searching nearby hardware stores for tukul kayu, cafes, massage therapist, etc. using DuckDuckGo web search).
 
 ---
