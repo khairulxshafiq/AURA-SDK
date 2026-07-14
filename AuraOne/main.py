@@ -778,6 +778,11 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         clean_text = re.sub(r"\[DRAFT_SOURCE_URL:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\[DRAFT_MASTER_ARTICLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
         clean_text = re.sub(r"\[DRAFT_HASHTAGS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_FB:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_THREADS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_TWITTER:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_LEMON8:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+
 
         # Prepare platform inline keyboard
         clean_text = clean_text.strip()
