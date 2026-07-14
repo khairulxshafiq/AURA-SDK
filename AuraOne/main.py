@@ -697,7 +697,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.reply_text(f"🚀 Menyimpan draf {plat_to_confirm.upper()} ke Airtable...")
         
         image_url = draft["image_url"]
-        final_image_url = _prepare_drive_image_for_airtable(image_url)
+        telegram_file_id = draft.get("telegram_file_id", "")
+        counter = draft.get("counter_val", 0)
+        final_image_url = await _prepare_drive_image_for_airtable(image_url, telegram_file_id, counter, context)
         from tools import save_draft_to_airtable
 
         res = save_draft_to_airtable(
@@ -751,6 +753,28 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         master_article = master_match.group(1).strip() if master_match else ""
         hashtags = hashtags_match.group(1).strip() if hashtags_match else ""
 
+        # Increment standard image/article counter in SQLite
+        import memory
+        prefs = memory.get_preferences()
+        counter_str = prefs.get("image_counter", "0")
+        try:
+            counter = int(counter_str)
+        except ValueError:
+            counter = 0
+        counter += 1
+        memory.update_preference("image_counter", str(counter))
+
+        telegram_file_id = ""
+        # Send image to Telegram first as a preview and cache its Telegram file_id
+        if image_url:
+            try:
+                photo_msg = await context.bot.send_photo(chat_id=chat_id, photo=image_url)
+                if photo_msg and photo_msg.photo:
+                    telegram_file_id = photo_msg.photo[-1].file_id
+                    logger.info(f"Successfully sent preview. Cached Telegram file_id: {telegram_file_id}")
+            except Exception as e:
+                logger.warning(f"Could not send photo preview: {e}")
+
         # Save draft in SQLite with interactive state: select_platforms
         initial_state = json.dumps({"phase": "select_platforms", "selected": []})
         memory.save_draft(
@@ -759,17 +783,22 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             master_article=master_article,
             hashtags=hashtags,
             image_url=image_url,
+            telegram_file_id=telegram_file_id,
+            counter_val=counter,
             source_url=source_url,
             state=initial_state
         )
-        logger.info(f"Saved content draft for user {user_id}: {title}")
+        logger.info(f"Saved content draft for user {user_id}: {title} (counter_val={counter})")
 
-        # Send image to Telegram first as a preview
-        if image_url:
-            try:
-                await context.bot.send_photo(chat_id=chat_id, photo=image_url)
-            except Exception as e:
-                logger.warning(f"Could not send photo preview: {e}")
+        # Upload text dump to Google Drive (Dump File folder) in the background
+        import threading
+        threading.Thread(
+            target=_upload_article_dump_to_drive,
+            args=(title, master_article, hashtags, source_url, response_text, counter),
+            daemon=True
+        ).start()
+
+
 
         # Clean response_text from these tags
         clean_text = response_text
@@ -864,10 +893,8 @@ async def _parse_schedule_time(natural_text: str) -> Optional[str]:
 
 
 
-def _get_next_image_filename(image_url: str) -> tuple[str, str]:
-    """Increment counter in SQLite and return a standardized filename (e.g. web-1.jpg) and its mime type."""
-    import memory
-    
+def _get_next_image_filename(image_url: str, counter: int) -> tuple[str, str]:
+    """Return a standardized filename (e.g. web-1.jpg) and its mime type for the given counter."""
     # Detect extension and mime type
     ext = "jpg"
     mime = "image/jpeg"
@@ -879,39 +906,46 @@ def _get_next_image_filename(image_url: str) -> tuple[str, str]:
     elif ".webp" in url_lower:
         ext = "webp"
         mime = "image/webp"
-    
-    prefs = memory.get_preferences()
-    counter_str = prefs.get("image_counter", "0")
-    try:
-        counter = int(counter_str)
-    except ValueError:
-        counter = 0
         
-    counter += 1
-    memory.update_preference("image_counter", str(counter))
-    
     filename = f"web-{counter}.{ext}"
     return filename, mime
 
 
-def _prepare_drive_image_for_airtable(image_url: str) -> str:
-    """Download hotlink-protected image and upload it to Google Drive to return a direct, public download URL."""
-    if not image_url:
+async def _prepare_drive_image_for_airtable(image_url: str, telegram_file_id: str, counter: int, context) -> str:
+    """Download image (via Telegram cache if available, or direct fallback) and upload to Google Drive for Airtable compatibility."""
+    if not image_url and not telegram_file_id:
         return ""
     try:
-        import httpx
         from tools import upload_to_drive
+        img_bytes = None
         
-        logger.info(f"Downloading image for Google Drive bypass: {image_url}")
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
-        with httpx.Client(timeout=30) as client:
-            resp = client.get(image_url, headers=headers)
-            resp.raise_for_status()
-            img_bytes = resp.content
+        # 1. Try downloading via Telegram file cache first (bypasses all 403 blocks)
+        if telegram_file_id and context:
+            try:
+                logger.info(f"Downloading image from Telegram cache using file_id: {telegram_file_id}")
+                telegram_file = await context.bot.get_file(telegram_file_id)
+                file_bytearray = await telegram_file.download_as_bytearray()
+                img_bytes = bytes(file_bytearray)
+                logger.info(f"Downloaded {len(img_bytes)} bytes from Telegram cache.")
+            except Exception as tg_err:
+                logger.warning(f"Telegram file download failed, falling back to HTTP: {tg_err}")
 
-        filename, mime = _get_next_image_filename(image_url)
+        # 2. HTTP Fallback if Telegram cache is empty or failed
+        if not img_bytes and image_url:
+            import httpx
+            logger.info(f"Downloading image via direct HTTP request: {image_url}")
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            }
+            with httpx.Client(timeout=30) as client:
+                resp = client.get(image_url, headers=headers)
+                resp.raise_for_status()
+                img_bytes = resp.content
+
+        if not img_bytes:
+            return image_url
+
+        filename, mime = _get_next_image_filename(image_url, counter)
         logger.info(f"Standardized filename for Drive: {filename}")
 
         drive_res = upload_to_drive(img_bytes, filename, mime)
@@ -923,6 +957,64 @@ def _prepare_drive_image_for_airtable(image_url: str) -> str:
         logger.error(f"Failed to process image bypass for Google Drive: {e}")
     return image_url
 
+
+
+
+
+def _upload_article_dump_to_drive(
+    title: str,
+    master_article: str,
+    hashtags: str,
+    source_url: str,
+    response_text: str,
+    counter: int
+) -> None:
+    """Formulate the full article dump containing master article and drafts, and upload to Google Drive's Dump File folder."""
+    try:
+        import re
+        from tools import upload_to_drive
+        
+        # Parse platform drafts from response_text using regex
+        fb_match = re.search(r"\[DRAFT_FB:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+        threads_match = re.search(r"\[DRAFT_THREADS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+        twitter_match = re.search(r"\[DRAFT_TWITTER:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+        lemon8_match = re.search(r"\[DRAFT_LEMON8:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+        
+        fb_draft = fb_match.group(1).strip() if fb_match else "N/A"
+        threads_draft = threads_match.group(1).strip() if threads_match else "N/A"
+        twitter_draft = twitter_match.group(1).strip() if twitter_match else "N/A"
+        lemon8_draft = lemon8_match.group(1).strip() if lemon8_match else "N/A"
+        
+        dump_content = (
+            f"SOURCE URL: {source_url}\n"
+            f"TITLE: {title}\n"
+            f"HASHTAGS: {hashtags}\n\n"
+            f"=========================================\n"
+            f"MASTER ARTICLE:\n{master_article}\n\n"
+            f"=========================================\n"
+            f"FACEBOOK DRAFT:\n{fb_draft}\n\n"
+            f"=========================================\n"
+            f"THREADS DRAFT:\n{threads_draft}\n\n"
+            f"=========================================\n"
+            f"X / TWITTER DRAFT:\n{twitter_draft}\n\n"
+            f"=========================================\n"
+            f"LEMON8 DRAFT:\n{lemon8_draft}\n"
+        )
+        
+        filename = f"web-{counter}.txt"
+        mime = "text/plain"
+        
+        # Folder ID for "Dump File" is 1dbUHkxDdAfxvJhzveHU9kTvQN27GrmFG
+        dump_folder_id = "1dbUHkxDdAfxvJhzveHU9kTvQN27GrmFG"
+        
+        logger.info(f"Uploading article text dump to Google Drive: {filename}")
+        res = upload_to_drive(dump_content.encode("utf-8"), filename, mime, folder_id=dump_folder_id)
+        if res["status"] == "success":
+            logger.info(f"Article text dump successfully uploaded to Drive: {res['link']}")
+        else:
+            logger.error(f"Failed to upload article dump to Drive: {res.get('error')}")
+    except Exception as e:
+        logger.error(f"Error in _upload_article_dump_to_drive: {e}")
 
 
 async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -967,7 +1059,9 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Format tarikh/masa tidak dicam. Hantaran akan dimasukkan ke Airtable dengan status 'Draft' tanpa jadual.")
 
     # Save the draft to Airtable
-    final_image_url = _prepare_drive_image_for_airtable(image_url)
+    telegram_file_id = draft.get("telegram_file_id", "")
+    counter = draft.get("counter_val", 0)
+    final_image_url = await _prepare_drive_image_for_airtable(image_url, telegram_file_id, counter, context)
     from tools import save_draft_to_airtable
 
     res = save_draft_to_airtable(

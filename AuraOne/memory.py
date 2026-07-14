@@ -51,6 +51,8 @@ def init_db():
             master_article TEXT,
             hashtags TEXT,
             image_url TEXT,
+            telegram_file_id TEXT,
+            counter_val INTEGER,
             source_url TEXT,
             selected_platform TEXT,
             platform_draft TEXT,
@@ -79,6 +81,8 @@ def save_draft(
     master_article: str,
     hashtags: str,
     image_url: str,
+    telegram_file_id: str,
+    counter_val: int,
     source_url: str,
     selected_platform: str = "",
     platform_draft: str = "",
@@ -89,26 +93,30 @@ def save_draft(
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO drafts (
-            user_id, title, master_article, hashtags, image_url, source_url, 
+            user_id, title, master_article, hashtags, image_url, telegram_file_id, counter_val, source_url, 
             selected_platform, platform_draft, state, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET 
             title=excluded.title, 
             master_article=excluded.master_article, 
             hashtags=excluded.hashtags, 
             image_url=excluded.image_url, 
+            telegram_file_id=excluded.telegram_file_id, 
+            counter_val=excluded.counter_val, 
             source_url=excluded.source_url, 
             selected_platform=excluded.selected_platform, 
             platform_draft=excluded.platform_draft, 
             state=excluded.state,
             created_at=CURRENT_TIMESTAMP
     """, (
-        user_id, title, master_article, hashtags, image_url, source_url,
+        user_id, title, master_article, hashtags, image_url, telegram_file_id, counter_val, source_url,
         selected_platform, platform_draft, state
     ))
     conn.commit()
     conn.close()
+
+
 
 
 def update_platform_draft(user_id: int, platform: str, draft_text: str, state: str = "") -> None:
@@ -143,7 +151,7 @@ def get_draft(user_id: int) -> dict | None:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT 
-            title, master_article, hashtags, image_url, source_url, 
+            title, master_article, hashtags, image_url, telegram_file_id, counter_val, source_url, 
             selected_platform, platform_draft, state 
         FROM drafts WHERE user_id = ?
     """, (user_id,))
@@ -155,10 +163,12 @@ def get_draft(user_id: int) -> dict | None:
             "master_article": row[1],
             "hashtags": row[2],
             "image_url": row[3],
-            "source_url": row[4],
-            "selected_platform": row[5],
-            "platform_draft": row[6],
-            "state": row[7]
+            "telegram_file_id": row[4],
+            "counter_val": row[5],
+            "source_url": row[6],
+            "selected_platform": row[7],
+            "platform_draft": row[8],
+            "state": row[9]
         }
     return None
 
