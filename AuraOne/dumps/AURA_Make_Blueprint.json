@@ -1,0 +1,44 @@
+{
+  "name": "AURA Social Media Auto-Poster",
+  "flow": [
+    {
+      "id": 1,
+      "module": "airtable:watchRecords",
+      "version": 1,
+      "parameters": {
+        "baseId": "appX8Ug5r1DgckMwx",
+        "tableId": "Content Station",
+        "viewId": "viwFIAfPbqm0MbOk4",
+        "limit": 10
+      },
+      "mapper": {},
+      "metadata": {
+        "expect": [
+          {
+            "name": "baseId",
+            "type": "select",
+            "label": "Base",
+            "required": true
+          },
+          {
+            "name": "tableId",
+            "type": "select",
+            "label": "Table",
+            "required": true
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "module": "builtin:BasicRouter",
+      "version": 1,
+      "parameters": {},
+      "mapper": {},
+      "metadata": {}
+    }
+  ],
+  "metadata": {
+    "version": 1
+  }
+}
