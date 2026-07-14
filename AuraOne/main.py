@@ -425,24 +425,16 @@ def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
         fb_bercerita_status = "✅ " if curr_fb == "bercerita" else "⬜ "
         fb_berita_status = "✅ " if curr_fb == "berita" else "⬜ "
         keyboard.append([
-            InlineKeyboardButton(f"{fb_bercerita_status}FB: Bercerita 📖", callback_data="sub:fb:bercerita"),
-            InlineKeyboardButton(f"{fb_berita_status}FB: Berita 📰", callback_data="sub:fb:berita")
+            InlineKeyboardButton(f"{fb_bercerita_status}FB: Bercerita 📖", callback_data="sub:facebook:bercerita"),
+            InlineKeyboardButton(f"{fb_berita_status}FB: Berita 📰", callback_data="sub:facebook:berita")
         ])
         
-    if "x" in selected:
-        curr_x = options.get("x", "")
+    if "x" in selected or "threads" in selected:
+        curr_len = options.get("thread_len", 5)
         keyboard.append([
-            InlineKeyboardButton(f"{'✅ ' if curr_x == 3 else '⬜ '}X: 3 Twit", callback_data="sub:x:3"),
-            InlineKeyboardButton(f"{'✅ ' if curr_x == 5 else '⬜ '}X: 5 Twit", callback_data="sub:x:5"),
-            InlineKeyboardButton(f"{'✅ ' if curr_x == 8 else '⬜ '}X: 8 Twit", callback_data="sub:x:8")
-        ])
-        
-    if "threads" in selected:
-        curr_threads = options.get("threads", "")
-        keyboard.append([
-            InlineKeyboardButton(f"{'✅ ' if curr_threads == 3 else '⬜ '}Threads: 3 Post", callback_data="sub:threads:3"),
-            InlineKeyboardButton(f"{'✅ ' if curr_threads == 5 else '⬜ '}Threads: 5 Post", callback_data="sub:threads:5"),
-            InlineKeyboardButton(f"{'✅ ' if curr_threads == 8 else '⬜ '}Threads: 8 Post", callback_data="sub:threads:8")
+            InlineKeyboardButton(f"{'✅ ' if curr_len == 3 else '⬜ '}Bebenang: 3 Post", callback_data="sub:thread_len:3"),
+            InlineKeyboardButton(f"{'✅ ' if curr_len == 5 else '⬜ '}Bebenang: 5 Post", callback_data="sub:thread_len:5"),
+            InlineKeyboardButton(f"{'✅ ' if curr_len == 8 else '⬜ '}Bebenang: 8 Post", callback_data="sub:thread_len:8")
         ])
         
     keyboard.append([InlineKeyboardButton("Generate Drafts ⚡", callback_data="sub_next")])
@@ -458,6 +450,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 "Tulis semula dalam gaya BERCERITA (Editorial). Ikuti peraturan berikut secara ketat:\n"
                 "- Mulakan post dengan CTA HOOK yang sangat menarik dan berimpak tinggi untuk membuatkan pembaca berhenti skrol dan membaca.\n"
                 "- Tulis kandungan dalam bentuk perenggan bercerita yang santai dan mengalir.\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa.\n"
                 "- Di bahagian bawah sekali, letakkan hashtag yang relevan dan WAJIB sertakan hashtag: #saklumastory"
             )
         else:
@@ -465,24 +458,30 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 "Tulis semula dalam gaya BERITA (News Report). Ikuti peraturan berikut secara ketat:\n"
                 "- Mulakan perenggan pertama dengan format laporan berita Malaysia (cth: 'Kuala Lumpur - ...' atau 'Dungun - Seorang lelaki dipercayai...').\n"
                 "- Gunakan laras bahasa pemberitaan yang formal tetapi mudah difahami.\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa.\n"
                 "- Di bahagian bawah sekali, letakkan hashtag yang relevan dan WAJIB sertakan hashtag: #saklumanews"
             )
     elif plat in ["threads", "x"]:
         style_instruction = (
-            f"Tulis semula dalam bentuk BEBENANG (Thread) sebanyak tepat {thread_length} bahagian (di-nombor sebagai 1/{thread_length}, 2/{thread_length}, ... hingga {thread_length}/{thread_length}).\n"
+            f"Tulis semula dalam bentuk BEBENANG (Thread) sebanyak tepat {thread_length} perenggan/bahagian.\n"
+            f"- JANGAN sesekali meletakkan nombor bahagian seperti '1/{thread_length}', '2/{thread_length}', '1.', '2.', atau sebarang indeks nombor di permulaan perenggan. Mulakan setiap bahagian/perenggan secara terus dengan teks bersih.\n"
             f"- Terjemahkan fakta artikel asal kepada bahasa rojak santai Malaysia yang sangat mudah difahami oleh pelbagai kaum (Melayu, Cina, India).\n"
             f"- Jaga nada penulisan agar neutral (tidak berat sebelah).\n"
             f"- Selang-selikan maklumat dengan soalan ringkas kepada pembaca untuk memancing respon/komen (CTA), tetapi jangan buat pada setiap bahagian bebenang (cukup sekadar 1-2 soalan di tempat yang sesuai).\n"
+            f"- JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa.\n"
             f"- Sertakan hashtag di bahagian akhir bebenang."
         )
     elif plat == "lemon8":
         style_instruction = (
-            "Tulis semula untuk platform Lemon8. Gaya Lemon8 mestilah sangat aesthetic, berstruktur, bermaklumat, dan mempunyai huraian yang lebih panjang (detail) berserta emoji-emoji yang menarik."
+            "Tulis semula untuk platform Lemon8. Gaya Lemon8 mestilah sangat aesthetic, berstruktur, bermaklumat, dan mempunyai huraian yang lebih panjang (detail) berserta emoji-emoji yang menarik.\n"
+            "JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa."
         )
     elif plat in ["instagram", "ig"]:
         style_instruction = (
-            "Tulis semula untuk Instagram. Gaya Instagram mestilah pendek, ringkas, padat, visual-driven, dan terus menarik minat pembaca."
+            "Tulis semula untuk Instagram. Gaya Instagram mestilah pendek, ringkas, padat, visual-driven, dan terus menarik minat pembaca.\n"
+            "JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa."
         )
+
 
     prompt = (
         f"Anda adalah Editor Konten Sakluma. Tugas anda adalah menulis draf hantaran untuk platform {plat.upper()}.\n\n"
@@ -560,7 +559,7 @@ async def _generate_all_platform_drafts(
     
     for plat in selected_platforms:
         fb_style = options.get("facebook", "") if plat == "facebook" else ""
-        thread_length = options.get(plat, 0) if plat in ["x", "threads"] else 0
+        thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
         
         draft_text = await _call_draft_generator_model(plat, draft, fb_style, thread_length)
         if draft_text:
@@ -638,10 +637,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             
             if "facebook" in selected and "facebook" not in state_data["options"]:
                 state_data["options"]["facebook"] = "bercerita"
-            if "x" in selected and "x" not in state_data["options"]:
-                state_data["options"]["x"] = 5
-            if "threads" in selected and "threads" not in state_data["options"]:
-                state_data["options"]["threads"] = 5
+            if ("x" in selected or "threads" in selected) and "thread_len" not in state_data["options"]:
+                state_data["options"]["thread_len"] = 5
+
 
             new_state_str = json.dumps(state_data)
             memory.update_draft_state(user_id, new_state_str)
@@ -699,6 +697,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.reply_text(f"🚀 Menyimpan draf {plat_to_confirm.upper()} ke Airtable...")
         
         image_url = draft["image_url"]
+        final_image_url = _prepare_drive_image_for_airtable(image_url)
         from tools import save_draft_to_airtable
 
         res = save_draft_to_airtable(
@@ -706,10 +705,11 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             caption=specific_draft,
             platform=plat_to_confirm,
             source_url=draft["source_url"],
-            image_url=image_url,
+            image_url=final_image_url,
             status="Draft",
             hashtags=draft["hashtags"]
         )
+
 
         if res["status"] == "success":
             platform_drafts.pop(plat_to_confirm, None)
@@ -864,6 +864,44 @@ async def _parse_schedule_time(natural_text: str) -> Optional[str]:
 
 
 
+def _prepare_drive_image_for_airtable(image_url: str) -> str:
+    """Download hotlink-protected image and upload it to Google Drive to return a direct, public download URL."""
+    if not image_url:
+        return ""
+    try:
+        import httpx
+        import time
+        from tools import upload_to_drive
+        
+        logger.info(f"Downloading image for Google Drive bypass: {image_url}")
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        with httpx.Client(timeout=30) as client:
+            resp = client.get(image_url, headers=headers)
+            resp.raise_for_status()
+            img_bytes = resp.content
+
+        filename = f"aura_{int(time.time())}.jpg"
+        if ".png" in image_url.lower():
+            filename = f"aura_{int(time.time())}.png"
+            mime = "image/png"
+        elif ".webp" in image_url.lower():
+            filename = f"aura_{int(time.time())}.webp"
+            mime = "image/webp"
+        else:
+            mime = "image/jpeg"
+
+        drive_res = upload_to_drive(img_bytes, filename, mime)
+        if drive_res["status"] == "success":
+            return drive_res["link"]
+        else:
+            logger.error(f"Google Drive bypass upload failed: {drive_res.get('error')}")
+    except Exception as e:
+        logger.error(f"Failed to process image bypass for Google Drive: {e}")
+    return image_url
+
+
 async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -906,6 +944,7 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("⚠️ Format tarikh/masa tidak dicam. Hantaran akan dimasukkan ke Airtable dengan status 'Draft' tanpa jadual.")
 
     # Save the draft to Airtable
+    final_image_url = _prepare_drive_image_for_airtable(image_url)
     from tools import save_draft_to_airtable
 
     res = save_draft_to_airtable(
@@ -913,13 +952,14 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         caption=platform_draft,
         platform=selected_platform,
         source_url=source_url,
-        image_url=image_url,
+        image_url=final_image_url,
         status=status,
         hashtags=hashtags,
         scheduled_time=scheduled_time_iso
     )
 
     if res["status"] == "success":
+
         # Clear draft on success
         memory.clear_draft(user_id)
         

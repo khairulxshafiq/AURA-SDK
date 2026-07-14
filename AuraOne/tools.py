@@ -289,15 +289,23 @@ def upload_to_drive(content_bytes: bytes, filename: str, mime_type: str = "image
             )
             resp.raise_for_status()
             data = resp.json()
+            file_id = data.get("id")
+            
+            # Make the file public so Airtable can download it as an attachment
+            perm_url = f"{GDRIVE_API}/files/{file_id}/permissions"
+            perm_payload = {"role": "reader", "type": "anyone"}
+            client.post(perm_url, json=perm_payload, headers=headers)
+            
         return {
             "status": "success",
-            "file_id": data.get("id"),
+            "file_id": file_id,
             "name": data.get("name"),
-            "link": data.get("webViewLink")
+            "link": f"https://docs.google.com/uc?export=download&id={file_id}"
         }
     except Exception as e:
         logger.error(f"upload_to_drive error: {e}")
         return {"status": "error", "error": str(e)}
+
 
 def save_draft_to_airtable(
     title: str,
@@ -329,13 +337,17 @@ def save_draft_to_airtable(
     # Map platform names nicely
     plat_name = "X" if platform.lower() in ["twitter", "x"] else platform.title()
     
+    # Strip markdown bold/italic tags for clean social media reader layout
+    clean_caption = caption
+    if clean_caption:
+        clean_caption = clean_caption.replace("**", "").replace("*", "")
+        
     fields = {
         "Title": title,
-        "Caption": caption,
+        "Caption": clean_caption,
         "Platform": [plat_name],
         "Status": status,
         "Brand": brand,
-        "Post Link": source_url,
         "Content Type": "Article",
         "Created By": created_by,
         "Hashtags": hashtags,
@@ -344,6 +356,7 @@ def save_draft_to_airtable(
         "Gambar": [{"url": image_url}] if image_url else None
     }
     fields = {k: v for k, v in fields.items() if v is not None}
+
     try:
         with httpx.Client(timeout=15) as client:
             resp = client.post(url, headers=headers, json={"fields": fields, "typecast": True})
