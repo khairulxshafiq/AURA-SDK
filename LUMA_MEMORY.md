@@ -22,12 +22,12 @@
 ### 2. Airtable Fields Schema Mapping & Typecasting (Fixed)
 * **Status**: Fully aligned with the real `Content Station` base schema.
 * **Self-Healing Select Choices (`typecast: True`)**: Enabled `typecast: True` in all Airtable POST record requests, allowing automatic creation of missing options (like Threads or Lemon8) directly inside Airtable columns.
-* **Image Attachments & Telegram Cache Bypass**: Resolved the Akamai/Cloudflare `403 Forbidden` hotlink block (which blocked direct downloading by the VPS IP). AURA now downloads the cached image file ID from Telegram's servers (`context.bot.get_file`), which is 100% immune to datacenter blocks. The downloaded file is uploaded to Google Drive as a public file, and the direct public download URL (`https://docs.google.com/uc?export=download&id=...`) is passed to Airtable's attachment field (`Image file` / `Gambar`) which downloads and attaches the image successfully.
+* **Image Attachments & GitHub Hosting Bypass**: Resolved the Akamai/Cloudflare `403 Forbidden` hotlink block and Google Service Account `0-byte storage quota limit` (which blocked direct downloading and Drive uploads). AURA now downloads the cached image file ID from Telegram's servers (`context.bot.get_file`), saves it locally in `AuraOne/images/`, and automatically commits and pushes it to the public GitHub repository. The direct raw URL (`https://raw.githubusercontent.com/khairulxshafiq/AURA-SDK/...`) is then passed to Airtable's attachment field, which fetches and attaches the image successfully every time!
 * **Post Link**: Removed writing to `Post Link` (news source URL) as requested by the user.
 
-### 3. Google Drive Scraped Article Text Dump (Implemented)
-* **Goal**: Keep a history log of all scraped articles and drafts in Google Drive.
-* **Flow**: Every time AURA scrapes an article, it formats a text dump containing the Source URL, Title, Hashtags, Master Article, and all generated platform drafts (Facebook, Threads, X, Lemon8). It standardizes the filename (e.g. `web-1.txt`, matching the image `web-1.jpg`) and uploads it to the `Dump File` folder (ID: `1dbUHkxDdAfxvJhzveHU9kTvQN27GrmFG`) inside the `AuraAgent-SDK` Google Drive monorepo folder.
+### 3. Git-driven GitHub Scraped Article Text Dump (Implemented)
+* **Goal**: Keep a clean, version-controlled history log of all scraped articles and drafts.
+* **Flow**: Every time AURA scrapes an article, it formats a text dump containing the Source URL, Title, Hashtags, Master Article, and all generated platform drafts (Facebook, Threads, X, Lemon8). It standardizes the filename (e.g. `web-1.txt`, matching the image `web-1.jpg`), saves it locally under `AuraOne/dumps/`, and automatically pushes it to the GitHub repository. This completely avoids Google Drive Service Account quota limitations and organizes drafts beautifully under git control.
 
 ### 4. Telegram Robust Link Rendering & Length Cleanup
 * **Markdown-to-HTML Converter**: Rewrote `_send_telegram_msg` to automatically convert Markdown bold (`**`) and links (`[Text](URL)`) to HTML, sending via Telegram HTML mode. This hides URLs behind "Baca Sini" text safely, avoiding Telegram Markdown parser breaking on URLs containing underscores (`_`) or other special characters.
