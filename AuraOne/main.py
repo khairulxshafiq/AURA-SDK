@@ -352,14 +352,40 @@ def _send_safe_message(text: str, max_length: int = 4000) -> str:
 
 async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
     """Send Telegram message with markdown support, automatically falling back to plain text if parsing fails."""
+    target_parse_mode = parse_mode
+    target_text = text
+    
+    if parse_mode in ["Markdown", "MarkdownV2", "markdown", "markdownv2"]:
+        import re
+        import html
+        
+        # Escape HTML characters first
+        escaped = html.escape(text)
+        
+        # Convert **bold** to <b>bold</b>
+        escaped = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", escaped)
+        
+        # Convert [text](url) to <a href="url">text</a>
+        escaped = re.sub(r"\[(.*?)\]\((https?://.*?)\)", r'<a href="\2">\1</a>', escaped)
+        
+        target_text = escaped
+        target_parse_mode = "HTML"
+
     try:
-        await update.message.reply_text(text, parse_mode=parse_mode)
+        if update.message:
+            await update.message.reply_text(target_text, parse_mode=target_parse_mode)
+        elif update.callback_query and update.callback_query.message:
+            await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode)
     except BadRequest as e:
-        if parse_mode and "can't parse entities" in str(e).lower():
-            logger.warning(f"Telegram Markdown parsing failed, falling back to plain text. Error: {e}")
-            await update.message.reply_text(text)
-        else:
-            raise e
+        logger.warning(f"Telegram parse mode {target_parse_mode} failed. Falling back to plain text. Error: {e}")
+        try:
+            if update.message:
+                await update.message.reply_text(text)
+            elif update.callback_query and update.callback_query.message:
+                await update.callback_query.message.reply_text(text)
+        except Exception as fallback_err:
+            logger.error(f"Fallback text send failed: {fallback_err}")
+
 
 
 def _get_platform_keyboard(state_data: dict) -> InlineKeyboardMarkup:

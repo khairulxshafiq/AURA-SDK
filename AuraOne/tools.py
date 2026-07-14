@@ -112,18 +112,21 @@ def _scrape_native(url: str, max_content_length: int = 30000) -> dict:
     images = []
     for img in soup.find_all("img", src=True):
         src = img["src"]
-        if src.startswith("http") and any(ext in src.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-            images.append(src)
+        abs_src = urllib.parse.urljoin(url, src)
+        if abs_src.startswith("http") and any(ext in abs_src.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+            images.append(abs_src)
         if len(images) >= 3:
             break
 
     links = []
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        if href.startswith("http"):
-            links.append(href)
+        abs_href = urllib.parse.urljoin(url, href)
+        if abs_href.startswith("http"):
+            links.append(abs_href)
         if len(links) >= 20:
             break
+
 
     return {
         "status": "success",
