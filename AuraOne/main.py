@@ -714,6 +714,25 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
 
         if res["status"] == "success":
+            thread_saved_status = ""
+            if plat_to_confirm.lower() in ["x", "twitter", "threads"]:
+                posts = [p.strip() for p in specific_draft.split("\n\n") if p.strip()]
+                if len(posts) > 1:
+                    from tools import save_thread_posts_to_airtable
+                    thread_res = save_thread_posts_to_airtable(
+                        parent_record_id=res["record_id"],
+                        posts=posts,
+                        platform=plat_to_confirm
+                    )
+                    if thread_res["status"] == "success":
+                        thread_saved_status = f"\n• *Thread Posts*: Berjaya dipecahkan kepada {len(posts)} bahagian di jadual [Thread Posts]! 🧵"
+                    else:
+                        thread_saved_status = (
+                            f"\n⚠️ *Pecahan Bebenang*: Gagal disimpan ke jadual 'Thread Posts' ({thread_res.get('error')}). "
+                            "Sila pastikan anda telah mencipta jadual 'Thread Posts' dengan kolum: "
+                            "Content Station (Link), Post Text (Long Text), Sequence (Number), dan Platform (Select)."
+                        )
+
             platform_drafts.pop(plat_to_confirm, None)
             if platform_drafts:
                 memory.update_platform_draft(user_id, draft["selected_platform"], json.dumps(platform_drafts), state="")
@@ -724,7 +743,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 f"✅ *Draf Hantaran {plat_to_confirm.upper()} Berjaya Disahkan!*\n\n"
                 f"• *Tajuk*: {draft['title']}\n"
                 f"• *Platform*: {plat_to_confirm.upper()}\n"
-                f"• *Airtable Record*: Berjaya disimpan [Content Station] (Status: Draft) ✈️\n\n"
+                f"• *Airtable Record*: Berjaya disimpan [Content Station] (Status: Draft) ✈️{thread_saved_status}\n\n"
                 f"Semua draf telah berjaya masuk ke Airtable! Yeayy! 🎉"
             )
             await query.message.reply_text(reply_msg, parse_mode="Markdown")
@@ -1092,6 +1111,24 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     if res["status"] == "success":
+        thread_saved_status = ""
+        if selected_platform.lower() in ["x", "twitter", "threads"]:
+            posts = [p.strip() for p in platform_draft.split("\n\n") if p.strip()]
+            if len(posts) > 1:
+                from tools import save_thread_posts_to_airtable
+                thread_res = save_thread_posts_to_airtable(
+                    parent_record_id=res["record_id"],
+                    posts=posts,
+                    platform=selected_platform
+                )
+                if thread_res["status"] == "success":
+                    thread_saved_status = f"\n• *Thread Posts*: Berjaya dipecahkan kepada {len(posts)} bahagian di jadual [Thread Posts]! 🧵"
+                else:
+                    thread_saved_status = (
+                        f"\n⚠️ *Pecahan Bebenang*: Gagal disimpan ke jadual 'Thread Posts' ({thread_res.get('error')}). "
+                        "Sila pastikan anda telah mencipta jadual 'Thread Posts' dengan kolum: "
+                        "Content Station (Link), Post Text (Long Text), Sequence (Number), dan Platform (Select)."
+                    )
 
         # Clear draft on success
         memory.clear_draft(user_id)
@@ -1103,7 +1140,7 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"• *Tajuk*: {title}\n"
             f"• *Platform*: {selected_platform.upper()}\n"
             f"{sched_info}\n"
-            f"• *Airtable Record*: Berjaya disimpan [Content Station]\n\n"
+            f"• *Airtable Record*: Berjaya disimpan [Content Station]{thread_saved_status}\n\n"
             f"Sedia untuk fasa posting!"
         )
         await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")

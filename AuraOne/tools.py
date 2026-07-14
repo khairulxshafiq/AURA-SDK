@@ -392,3 +392,45 @@ def save_draft_to_airtable(
         return {"status": "error", "error": str(e)}
 
 
+def save_thread_posts_to_airtable(parent_record_id: str, posts: list[str], platform: str) -> dict:
+    """Save individual thread posts linked to the main Content Station record in Airtable."""
+    import os
+    import httpx
+    import logging
+    logger = logging.getLogger(__name__)
+
+    api_key = os.environ.get("AIRTABLE_API_KEY", "")
+    base_id = os.environ.get("AIRTABLE_BASE_ID", "")
+    table_name = "Thread Posts"
+    
+    if not api_key or not base_id:
+        return {"status": "error", "error": "Airtable credentials missing"}
+        
+    url = f"https://api.airtable.com/v0/{base_id}/{table_name}"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    records = []
+    for idx, post_text in enumerate(posts, start=1):
+        records.append({
+            "fields": {
+                "Content Station": [parent_record_id],
+                "Post Text": post_text,
+                "Sequence": idx,
+                "Platform": "X" if platform.lower() in ["x", "twitter"] else platform.title()
+            }
+        })
+        
+    try:
+        with httpx.Client(timeout=15) as client:
+            resp = client.post(url, headers=headers, json={"records": records, "typecast": True})
+            resp.raise_for_status()
+            return {"status": "success"}
+    except Exception as e:
+        logger.error(f"Error saving thread posts to Airtable: {e}")
+        return {"status": "error", "error": str(e)}
+
+
+
