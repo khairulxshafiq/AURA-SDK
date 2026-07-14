@@ -864,13 +864,42 @@ async def _parse_schedule_time(natural_text: str) -> Optional[str]:
 
 
 
+def _get_next_image_filename(image_url: str) -> tuple[str, str]:
+    """Increment counter in SQLite and return a standardized filename (e.g. web-1.jpg) and its mime type."""
+    import memory
+    
+    # Detect extension and mime type
+    ext = "jpg"
+    mime = "image/jpeg"
+    
+    url_lower = image_url.lower()
+    if ".png" in url_lower:
+        ext = "png"
+        mime = "image/png"
+    elif ".webp" in url_lower:
+        ext = "webp"
+        mime = "image/webp"
+    
+    prefs = memory.get_preferences()
+    counter_str = prefs.get("image_counter", "0")
+    try:
+        counter = int(counter_str)
+    except ValueError:
+        counter = 0
+        
+    counter += 1
+    memory.update_preference("image_counter", str(counter))
+    
+    filename = f"web-{counter}.{ext}"
+    return filename, mime
+
+
 def _prepare_drive_image_for_airtable(image_url: str) -> str:
     """Download hotlink-protected image and upload it to Google Drive to return a direct, public download URL."""
     if not image_url:
         return ""
     try:
         import httpx
-        import time
         from tools import upload_to_drive
         
         logger.info(f"Downloading image for Google Drive bypass: {image_url}")
@@ -882,15 +911,8 @@ def _prepare_drive_image_for_airtable(image_url: str) -> str:
             resp.raise_for_status()
             img_bytes = resp.content
 
-        filename = f"aura_{int(time.time())}.jpg"
-        if ".png" in image_url.lower():
-            filename = f"aura_{int(time.time())}.png"
-            mime = "image/png"
-        elif ".webp" in image_url.lower():
-            filename = f"aura_{int(time.time())}.webp"
-            mime = "image/webp"
-        else:
-            mime = "image/jpeg"
+        filename, mime = _get_next_image_filename(image_url)
+        logger.info(f"Standardized filename for Drive: {filename}")
 
         drive_res = upload_to_drive(img_bytes, filename, mime)
         if drive_res["status"] == "success":
@@ -900,6 +922,7 @@ def _prepare_drive_image_for_airtable(image_url: str) -> str:
     except Exception as e:
         logger.error(f"Failed to process image bypass for Google Drive: {e}")
     return image_url
+
 
 
 async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
