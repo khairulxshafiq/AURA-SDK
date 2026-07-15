@@ -371,18 +371,24 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
         target_text = escaped
         target_parse_mode = "HTML"
 
+    thread_id = None
+    if update.message:
+        thread_id = getattr(update.message, "message_thread_id", None)
+    elif update.callback_query and update.callback_query.message:
+        thread_id = getattr(update.callback_query.message, "message_thread_id", None)
+
     try:
         if update.message:
-            await update.message.reply_text(target_text, parse_mode=target_parse_mode)
+            await update.message.reply_text(target_text, parse_mode=target_parse_mode, message_thread_id=thread_id)
         elif update.callback_query and update.callback_query.message:
-            await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode)
+            await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode, message_thread_id=thread_id)
     except BadRequest as e:
         logger.warning(f"Telegram parse mode {target_parse_mode} failed. Falling back to plain text. Error: {e}")
         try:
             if update.message:
-                await update.message.reply_text(text)
+                await update.message.reply_text(text, message_thread_id=thread_id)
             elif update.callback_query and update.callback_query.message:
-                await update.callback_query.message.reply_text(text)
+                await update.callback_query.message.reply_text(text, message_thread_id=thread_id)
         except Exception as fallback_err:
             logger.error(f"Fallback text send failed: {fallback_err}")
 
