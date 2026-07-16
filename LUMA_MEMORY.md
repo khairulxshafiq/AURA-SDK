@@ -33,7 +33,7 @@
 * **Goal**: Establish direct integration with Matrol's Make.com workspace to manage publishing.
 * **Flow**: Successfully connected to Matrol's verified Make.com account (`KhairulShafiq`) using the provided Personal Access Token (`9bd4f239-ced4-4709-a189-19eb237fa925`).
 * **Scenario Created**: Created the scenario `AURA Social Media Auto-Poster` (ID: `6563725`) under Team `1302406` (AuraOne Org).
-* **Blueprint Provided**: Pre-built and pushed a Make.com Blueprint JSON file (`AuraOne/dumps/AURA_Make_Blueprint.json`) to GitHub, which Matrol can import to instantly set up the Airtable trigger and Router flow.
+* **Blueprint & Connection Mapping**: Pre-built and pushed a Make.com Blueprint JSON file (`AuraOne/dumps/AURA_Make_Blueprint.json`) to GitHub. Verified and updated the Facebook Page module connection ID to Matrol's newly created connection (`ID: 9064531, Name: My Facebook connection`) and patched it directly into the active scenario on Make.com.
 
 ### 5. Telegram Robust Link Rendering & Length Cleanup
 * **Markdown-to-HTML Converter**: Rewrote `_send_telegram_msg` to automatically convert Markdown bold (`**`) and links (`[Text](URL)`) to HTML, sending via Telegram HTML mode. This hides URLs behind "Baca Sini" text safely, avoiding Telegram Markdown parser breaking on URLs containing underscores (`_`) or other special characters.
