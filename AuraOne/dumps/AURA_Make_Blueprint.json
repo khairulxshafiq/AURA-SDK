@@ -6,9 +6,11 @@
       "module": "airtable:TriggerWatchRecords",
       "version": 3,
       "parameters": {
-        "__IMTCONN__": 6356117,
+        "__IMTCONN__": 9090567,
         "base": "appX8Ug5r1DgckMwx",
-        "table": "Content Station",
+        "table": "tbl0YLPzsfneGd0Xb",
+        "view": "viwFIAfPbqm0MbOk4",
+        "triggerField": "Created Time",
         "limit": 10
       },
       "mapper": {},
@@ -44,7 +46,7 @@
               "module": "facebook-pages:CreatePost",
               "version": 6,
               "parameters": {
-                "__IMTCONN__": 9064531,
+                "__IMTCONN__": 9090534,
                 "page_id": "708376072366250"
               },
               "filter": {
@@ -87,7 +89,7 @@
               "module": "airtable:ActionSearchRecords",
               "version": 3,
               "parameters": {
-                "__IMTCONN__": 6356117,
+                "__IMTCONN__": 9090567,
                 "base": "appX8Ug5r1DgckMwx",
                 "table": "Thread Posts"
               },
@@ -166,7 +168,7 @@
               "module": "airtable:ActionSearchRecords",
               "version": 3,
               "parameters": {
-                "__IMTCONN__": 6356117,
+                "__IMTCONN__": 9090567,
                 "base": "appX8Ug5r1DgckMwx",
                 "table": "Thread Posts"
               },
