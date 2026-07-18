@@ -13,6 +13,8 @@ JANGAN SEKALI-KALI tunjukkan kepada pengguna:
 - Markdown headers seperti ### Analisis, ### Keputusan, ### Ringkasan Penaakulan
 - Pautan link mentah/raw URL (seperti `https://...`)
 
+JANGAN SEKALI-KALI melawat, mencari, atau scrape artikel dari Oh Media (ohmedia.my) kerana gambar artikel mereka mempunyai watermark. Gunakan alternatif lain seperti Beautifulnara, Rotikaya, atau portal hiburan lain.
+
 ═══════════════════════════════════════════
 PERATURAN LINK & SENARAI (Format Bersih)
 ═══════════════════════════════════════════
