@@ -359,34 +359,26 @@ def save_draft_to_airtable(
 
     try:
         with httpx.Client(timeout=15) as client:
-            resp = client.post(url, headers=headers, json={"fields": fields, "typecast": True})
+            while True:
+                resp = client.post(url, headers=headers, json={"fields": fields, "typecast": True})
+                if resp.status_code == 200:
+                    break
+                elif resp.status_code == 422 and "UNKNOWN_FIELD_NAME" in resp.text:
+                    err_msg = resp.text
+                    removed = False
+                    for k in list(fields.keys()):
+                        if k in err_msg:
+                            logger.info(f"Field '{k}' not found in Airtable schema, removing it.")
+                            fields.pop(k, None)
+                            removed = True
+                    if not removed:
+                        resp.raise_for_status()
+                else:
+                    resp.raise_for_status()
             
-            # Smart self-healing fallback for different field existence
-            if resp.status_code == 422 and "UNKNOWN_FIELD_NAME" in resp.text:
-                err_msg = resp.text
-                retry_needed = False
-                
-                if "Gambar" in err_msg and "Gambar" in fields:
-                    logger.info("Gambar column not found in Airtable, removing it.")
-                    fields.pop("Gambar", None)
-                    retry_needed = True
-                    
-                if "Image file" in err_msg and "Image file" in fields:
-                    logger.info("Image file column not found in Airtable, removing it.")
-                    fields.pop("Image file", None)
-                    retry_needed = True
-                    
-                if "Scheduled Date" in err_msg and "Scheduled Date" in fields:
-                    logger.info("Scheduled Date column not found in Airtable, removing it.")
-                    fields.pop("Scheduled Date", None)
-                    retry_needed = True
-
-                if retry_needed:
-                    resp = client.post(url, headers=headers, json={"fields": fields, "typecast": True})
-                
-            resp.raise_for_status()
             data = resp.json()
             return {"status": "success", "record_id": data.get("id")}
+
     except Exception as e:
         logger.error(f"Airtable error: {e}")
         return {"status": "error", "error": str(e)}
