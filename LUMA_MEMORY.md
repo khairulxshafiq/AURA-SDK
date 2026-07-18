@@ -42,6 +42,15 @@
 ### 6. Registered Telegram Location Handlers
 * **Goal**: Track user coordinates, reverse-geocode via Nominatim OpenStreetMap, and inject the live location address into system instructions context so AURA can perform local recommendations (e.g. searching nearby hardware stores for tukul kayu, cafes, massage therapist, etc. using DuckDuckGo web search).
 
+### 7. n8n Self-Hosted Automation & Facebook Integration
+* **Migration to n8n (Self-Hosted on Railway)**: Migrated from Make.com to self-hosted n8n on Railway (`https://auraone-n8nauto.up.railway.app`). Resolved Railway environment variables and database connection issues by routing internally to the Postgres service.
+* **Facebook Page Auto-Posting Integration (n8n & HTTPS)**:
+  - Swapped out native Facebook Pages OAuth (which suffered from redirect issues) for a direct HTTP Request (`FaceBook Post`) node.
+  - Exchanged Matrol's Meta Business Manager System User token for a permanent Page Access Token for `Sakluma.HQ` (Page ID `708376072366250`).
+  - Added a `60000ms` (60 seconds) timeout option to the n8n HTTP node to allow Facebook to download and process high-resolution images from Airtable.
+  - Replaced the Airtable update node `Mark as Posted` with Version 1 to bypass n8n's Version 2 `columns.matchingColumns` validation schema bug.
+  - Successfully ran a live verification test: direct post was successfully published on the Facebook Page `Sakluma.HQ` (returning 200 OK), and the workflow is now fully active (ON) and self-healing.
+
 ---
 
 ## 📌 SQLite Memory Updates (`memory.py`)
@@ -61,10 +70,10 @@
 * **Thread Splitting (Linked Child Table)**: To enable automated publishing tools (like Make.com or Zapier) to post X/Threads bebenang sequentially as true replies, AURA automatically splits the thread drafts by double newlines (`\n\n`) and writes each post individually into a child table named `Thread Posts` in Airtable, linked to the parent `Content Station` record with its ordering sequence (`Sequence` = 1, 2, 3...).
 * **6-Key Gemini Rotation Router**: Configured a total of 6 Gemini API keys inside `.env` (`GEMINI_API_KEY` up to `GEMINI_API_KEY_5`) to act as an automatic fallback rotation router, completely eliminating free-tier 429 rate limit issues.
 * **Telegram Group Topics (Thread Support)**: Added explicit extraction and mapping of `message_thread_id` inside AURA's `_send_telegram_msg` core sender. This guarantees that when AURA is added to a Telegram Forum/Supergroup with dedicated topics, AURA's replies are sent directly inside the active topic instead of leaking to the General thread.
-* **Migration to n8n (Self-Hosted on Railway)**: Migrated from Make.com to self-hosted n8n on Railway. n8n solves Make's free-tier rate limits and features a native 1-click copy-paste JSON import mechanism for easy configuration.
+* **Permanent System User Tokens**: Using Meta Business System User Page Access Tokens bypasses OAuth 60-day expiry limits, ensuring AURA auto-posting runs perpetually without user re-authentication.
 
 ---
 
 ## 📋 Future Roadmap / Pending Goals
 * [ ] **AURA Blog (Sakluma Blog)**: Set up auto-posting to a Blogger-style site for SEO/Google Web Ads.
-* [ ] **Publishing Automation**: Complete the configuration of the n8n workflow for Facebook Page posting, sequence X/Threads loops, and schedule polling.
+* [x] **Publishing Automation**: Complete the configuration of the n8n workflow for Facebook Page posting, sequence X/Threads loops, and schedule polling.
