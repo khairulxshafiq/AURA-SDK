@@ -21,6 +21,7 @@
 
 ### 2. Airtable Fields Schema Mapping & Typecasting (Fixed)
 * **Status**: Fully aligned with the real `Content Station` base schema.
+* **Dynamic Self-Healing (Fixed)**: Upgraded the retry logic in `save_draft_to_airtable` (in `tools.py`) to a recursive `while True` loop. If Airtable returns a 422 error due to unknown columns (like `"Scheduled Date"` or `"Gambar"`), the bot dynamically parses the error message, strips the unrecognized fields, and retries. This guarantees successful saving even if the Airtable schema changes.
 * **Self-Healing Select Choices (`typecast: True`)**: Enabled `typecast: True` in all Airtable POST record requests, allowing automatic creation of missing options (like Threads or Lemon8) directly inside Airtable columns.
 * **Image Attachments & GitHub Hosting Bypass**: Resolved the Akamai/Cloudflare `403 Forbidden` hotlink block and Google Service Account `0-byte storage quota limit` (which blocked direct downloading and Drive uploads). AURA now downloads the cached image file ID from Telegram's servers (`context.bot.get_file`), saves it locally in `AuraOne/images/`, and automatically commits and pushes it to the public GitHub repository. The direct raw URL (`https://raw.githubusercontent.com/khairulxshafiq/AURA-SDK/...`) is then passed to Airtable's attachment field, which fetches and attaches the image successfully every time!
 * **Post Link**: Removed writing to `Post Link` (news source URL) as requested by the user.
