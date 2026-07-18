@@ -72,6 +72,8 @@
 * **6-Key Gemini Rotation Router**: Configured a total of 6 Gemini API keys inside `.env` (`GEMINI_API_KEY` up to `GEMINI_API_KEY_5`) to act as an automatic fallback rotation router, completely eliminating free-tier 429 rate limit issues.
 * **Telegram Group Topics (Thread Support)**: Added explicit extraction and mapping of `message_thread_id` inside AURA's `_send_telegram_msg` core sender. This guarantees that when AURA is added to a Telegram Forum/Supergroup with dedicated topics, AURA's replies are sent directly inside the active topic instead of leaking to the General thread.
 * **Permanent System User Tokens**: Using Meta Business System User Page Access Tokens bypasses OAuth 60-day expiry limits, ensuring AURA auto-posting runs perpetually without user re-authentication.
+* **Oh Media Scraping Banned**: Banned the agent from scraping or searching articles from Oh Media (`ohmedia.my`) in `persona.txt` due to watermarked images, prioritizing alternatives like Beautifulnara or Rotikaya instead.
+
 
 ---
 
