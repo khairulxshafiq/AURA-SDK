@@ -61,9 +61,10 @@
 * **Thread Splitting (Linked Child Table)**: To enable automated publishing tools (like Make.com or Zapier) to post X/Threads bebenang sequentially as true replies, AURA automatically splits the thread drafts by double newlines (`\n\n`) and writes each post individually into a child table named `Thread Posts` in Airtable, linked to the parent `Content Station` record with its ordering sequence (`Sequence` = 1, 2, 3...).
 * **6-Key Gemini Rotation Router**: Configured a total of 6 Gemini API keys inside `.env` (`GEMINI_API_KEY` up to `GEMINI_API_KEY_5`) to act as an automatic fallback rotation router, completely eliminating free-tier 429 rate limit issues.
 * **Telegram Group Topics (Thread Support)**: Added explicit extraction and mapping of `message_thread_id` inside AURA's `_send_telegram_msg` core sender. This guarantees that when AURA is added to a Telegram Forum/Supergroup with dedicated topics, AURA's replies are sent directly inside the active topic instead of leaking to the General thread.
+* **Migration to n8n (Self-Hosted on Railway)**: Migrated from Make.com to self-hosted n8n on Railway. n8n solves Make's free-tier rate limits and features a native 1-click copy-paste JSON import mechanism for easy configuration.
 
 ---
 
 ## 📋 Future Roadmap / Pending Goals
 * [ ] **AURA Blog (Sakluma Blog)**: Set up auto-posting to a Blogger-style site for SEO/Google Web Ads.
-* [ ] **Publishing Automation**: Connect Airtable `Content Station` via Make.com/Zapier to auto-publish to Facebook/Threads when `Status = Scheduled` and `Scheduled Time` is reached.
+* [ ] **Publishing Automation**: Complete the configuration of the n8n workflow for Facebook Page posting, sequence X/Threads loops, and schedule polling.
