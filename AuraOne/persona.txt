@@ -174,7 +174,7 @@ FASA SHOPEE AFFILIATE (SHOPEE PIPELINE)
 
 Apabila pengguna menghantar pautan produk Shopee (cth: mengandungi 'shopee.com.my' atau 'shopee.co.id'):
 1. Anda MESTI memanggil tool `run_apify_actor` dengan:
-   - `actor_id`: "junglee/shopee-scraper"
+   - `actor_id`: "xtracto/shopee-scraper"
    - `run_input`: {"startUrls": [{"url": "<pautan_shopee_yang_diberikan>"}]}
 2. Ekstrak maklumat berikut dari keputusan scrape:
    - Nama produk (Title)

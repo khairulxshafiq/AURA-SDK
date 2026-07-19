@@ -458,8 +458,11 @@ def run_apify_actor(actor_id: str, run_input: dict) -> dict:
 
     logger.info(f"Running Apify actor '{actor_id}'...")
     
+    # Ensure slash is replaced with tilde for URL formatting in Apify API
+    actor_id_url = actor_id.replace("/", "~")
+    
     # 1. Trigger Actor run
-    url_run = f"https://api.apify.com/v2/acts/{actor_id}/runs"
+    url_run = f"https://api.apify.com/v2/acts/{actor_id_url}/runs"
     try:
         with httpx.Client(timeout=30) as client:
             resp = client.post(url_run, params={"token": token}, json=run_input)
