@@ -300,6 +300,50 @@ class OpenRouterProxyHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length)
         
+        # Log request body to trace OpenRouter payload
+        with open("/tmp/openrouter_req.json", "wb") as f:
+            f.write(post_data)
+        logger.info(f"[OpenRouter Proxy] Received headers: {dict(self.headers)}")
+        logger.info(f"[OpenRouter Proxy] Post data length: {len(post_data)} bytes. First 500 chars: {post_data[:500]}")
+        
+        # Rewrite payload to inject image if a fresh image is available
+        import json
+        import base64
+        import time
+        try:
+            payload = json.loads(post_data.decode('utf-8'))
+            messages = payload.get("messages", [])
+            media_file = "/tmp/last_user_media.jpg"
+            mime_file = "/tmp/last_user_media_mime.txt"
+            if os.path.exists(media_file) and os.path.exists(mime_file) and messages:
+                mtime = os.path.getmtime(media_file)
+                if (time.time() - mtime) < 20.0:
+                    with open(media_file, "rb") as f:
+                        media_bytes = f.read()
+                    with open(mime_file, "r") as f:
+                        mime_type = f.read().strip()
+                    
+                    last_msg = messages[-1]
+                    if last_msg.get("role") == "user":
+                        orig_content = last_msg.get("content", "")
+                        if isinstance(orig_content, str):
+                            b64_data = base64.b64encode(media_bytes).decode('utf-8')
+                            img_url = f"data:{mime_type};base64,{b64_data}"
+                            last_msg["content"] = [
+                                {"type": "text", "text": orig_content},
+                                {"type": "image_url", "image_url": {"url": img_url}}
+                            ]
+                            payload["messages"][-1] = last_msg
+                            post_data = json.dumps(payload).encode('utf-8')
+                            logger.info(f"[OpenRouter Proxy] Successfully injected photo ({len(media_bytes)} bytes) into OpenRouter payload!")
+                            try:
+                                os.remove(media_file)
+                                os.remove(mime_file)
+                            except Exception:
+                                pass
+        except Exception as e:
+            logger.error(f"[OpenRouter Proxy] Failed to parse/rewrite payload: {e}")
+
         # Inject API Key from env
         api_key = os.environ.get("OPENROUTER_API_KEY", "")
         headers = {
@@ -324,18 +368,20 @@ class OpenRouterProxyHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(response.read())
         except urllib.error.HTTPError as e:
+            err_body = e.read()
+            logger.error(f"[OpenRouter Proxy] HTTPError {e.code}: {err_body}")
             self.send_response(e.code)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
-            self.wfile.write(e.read())
+            self.wfile.write(err_body)
         except Exception as e:
+            logger.error(f"[OpenRouter Proxy] Exception: {e}")
             self.send_response(500)
             self.end_headers()
             self.wfile.write(str(e).encode('utf-8'))
 
     def log_message(self, format, *args):
-        # Suppress logging proxy requests to keep stdout clean
-        pass
+        logger.info(f"[OpenRouter Proxy] {format % args}")
 
 
 def _start_openrouter_proxy(port: int = 18080):
@@ -1375,6 +1421,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             telegram_file = await context.bot.get_file(photo.file_id)
             file_bytearray = await telegram_file.download_as_bytearray()
             img_bytes = bytes(file_bytearray)
+            # Save to temp file for OpenRouter proxy image injection fallback
+            try:
+                with open("/tmp/last_user_media.jpg", "wb") as f:
+                    f.write(img_bytes)
+                with open("/tmp/last_user_media_mime.txt", "w") as f:
+                    f.write("image/jpeg")
+                logger.info("Saved incoming photo to /tmp/last_user_media.jpg for OpenRouter proxy injection fallback.")
+            except Exception as tmp_err:
+                logger.error(f"Failed to save temp photo for proxy injection: {tmp_err}")
             from google.antigravity import Image as AGImage
             media_part = AGImage(data=img_bytes, mime_type="image/jpeg")
             logger.info(f"Loaded user photo of {len(img_bytes)} bytes for Gemini multimodal processing.")
