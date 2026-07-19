@@ -1549,6 +1549,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # Clear Gemini API key from environment to prevent harness process validation errors on startup!
+    if "GEMINI_API_KEY" in os.environ:
+        del os.environ["GEMINI_API_KEY"]
+
     or_config = _build_openrouter_config(conv_id)
 
     try:
