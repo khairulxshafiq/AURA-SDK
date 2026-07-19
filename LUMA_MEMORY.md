@@ -110,7 +110,8 @@
   * Switched default Shopee actor to `gio21/shopee-scraper` (which works without residential proxies on Free Apify tier) and implemented automatic shortened link canonicalization/resolution inside `run_apify_actor` tool.
 
   * Added API Key utilization prefixes to AURA bot responses: Free keys show `F1`, `F2`... and Paid/OpenRouter keys show `P1`... to track token usage.
-  * Implemented Telegram photo message handler (`filters.PHOTO`) in `main.py` allowing AURA to download and process user-uploaded images natively via Gemini/OpenRouter multimodal vision API.
+  * Implemented comprehensive Telegram multimodal message handler (`filters.PHOTO`, `filters.VIDEO`, `filters.VOICE`, `filters.Document.ALL`) in `main.py`, allowing AURA to download and process user-uploaded images, videos, voice notes, and PDF/text documents natively via Gemini/OpenRouter multimodal vision & audio API.
+
   * Configured image analysis pipeline modes (Copy 100% JSON prompt generation, Default Vision QA, and FB drafting styles selection matching the article scraping inline style selection flow) in `persona.txt`.
   * Implemented Gemini API key cooldown caching (`COOLDOWN_KEYS`) backed by persistent SQLite storage to avoid sequential initialization latency on rate-limited keys, reducing fallback response time even after service restarts.
 
