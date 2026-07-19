@@ -109,7 +109,8 @@
   * Integrated Shopee Affiliate Pipeline: Configured custom softsell copywriting rules in `persona.txt` to tell stories and place product affiliate links at the very end of posts. Extended `save_draft_to_airtable` and metadata parsing in `main.py` to support `Content Type` = `"Shopee"`, `Original Price`, and `Seller Location` fields with dynamic self-healing schema fallback.
   * Switched default Shopee actor to `gio21/shopee-scraper` (which works without residential proxies on Free Apify tier) and implemented automatic shortened link canonicalization/resolution inside `run_apify_actor` tool.
 
-  * Added API Key utilization prefixes to AURA bot responses: Free keys show `F1`, `F2`... and Paid/OpenRouter keys show `P1`... to track token usage.
+  * Added API Key utilization prefixes to AURA bot responses: Free keys show `F1`, `F2`... and Paid/OpenRouter keys show `P1`... (or `P2` for OpenAI model family) to track token usage.
+
   * Implemented comprehensive Telegram multimodal message handler (`filters.PHOTO`, `filters.VIDEO`, `filters.VOICE`, `filters.Document.ALL`) in `main.py`, allowing AURA to download and process user-uploaded images, videos, voice notes, and PDF/text documents natively via Gemini/OpenRouter multimodal vision & audio API.
 
   * Configured image analysis pipeline modes (Copy 100% JSON prompt generation, Default Vision QA, and FB drafting styles selection matching the article scraping inline style selection flow) in `persona.txt`.
