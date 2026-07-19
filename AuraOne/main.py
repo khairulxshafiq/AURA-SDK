@@ -1425,7 +1425,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
         else:
             clean = _clean_response(response_text)
-            prefix = f"_([F{current_key_idx + 1}] - gemini-2.5-flash)_\n\n"
+            prefix = f"[F{current_key_idx + 1}] gemini-2.5-flash\n\n"
             final_text = _send_safe_message(f"{prefix}{clean}")
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         return
@@ -1464,7 +1464,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         else:
             clean = _clean_response(response_text)
-            prefix = f"_([P1] - {OPENROUTER_FALLBACK_MODEL})_\n\n"
+            prefix = f"[P1] {OPENROUTER_FALLBACK_MODEL}\n\n"
             final_text = _send_safe_message(f"{prefix}{clean}")
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
 
