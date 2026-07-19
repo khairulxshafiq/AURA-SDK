@@ -59,7 +59,7 @@
 * **Flow**: Redesigned the sub-options menu keyboard in `main.py` and the draft generator system instructions to support 7 distinct narrative lenses for Facebook:
   - **Berita 📰**: Formal Malaysian news lead (`Kuala Lumpur - ...`) with simplified reporting tone.
   - **Pemerhati 👀**: Storyteller/ Kampung observer. Starts with a hook, reflects on observations, and ends with a moral lesson (80-150 words).
-  - **Kedai Kopi ☕**: Opinion mode. Bold personal views using citizen speak ("Pada aku", "Sejujurnya") and fact observations (100-200 words).
+  - **Kedai Kopi ☕**: Opinion mode. Bold personal views using citizen speak and fact observations (100-200 words). Refined to forbid repeating starting opinion words (like 'Pada aku' and 'Bagi aku' in the same post) and promote expressive popular citizen phrases ('Sampai bila nak...', 'Persoalannya...', 'Hakikatnya...').
   - **Viral Santai 🔥**: Classic viral hook ("Wehh.", "Eh.") combined with human reaction, facts, and engagement question (80-150 words).
   - **Makcik Bawang 😆**: Dramatic and humorous gossip share. High engagement hook, gossip reaction, and audience questions (80-150 words).
   - **Kisah Inspirasi ❤️**: Uplifting, positive focus on human values and achievements.
