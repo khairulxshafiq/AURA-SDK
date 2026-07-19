@@ -103,4 +103,11 @@
   * Reverted and restored the workflow to execution 75 layout.
   * Resolved Facebook API OAuth deprecated action error using Page Access Token directly via direct query parameters.
   * Diagnosed and documented Threads API 500 media upload failure due to expired short-lived access token.
+* [x] **Apify Integration & Shopee Affiliate Pipeline (AURA SDK)**:
+  * Verified and added Apify API Token (`apify_api_UQ9Q...`) to `.env`.
+  * Implemented and registered generic `run_apify_actor` tool in `tools.py` and `main.py`.
+  * Integrated Shopee Affiliate Pipeline: Configured custom softsell copywriting rules in `persona.txt` to tell stories and place product affiliate links at the very end of posts. Extended `save_draft_to_airtable` and metadata parsing in `main.py` to support `Content Type` = `"Shopee"`, `Original Price`, and `Seller Location` fields with dynamic self-healing schema fallback.
+
+
+
 

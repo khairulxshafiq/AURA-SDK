@@ -318,9 +318,17 @@ def save_draft_to_airtable(
     created_by: str = "AURA (SDK)",
     status: str = "Draft",
     hashtags: str = "",
-    scheduled_time: str = ""
+    scheduled_time: str = "",
+    content_type: str = "Article",
+    original_price: str = "",
+    seller_location: str = ""
 ) -> dict:
     import json
+    import os
+    import httpx
+    import logging
+    logger = logging.getLogger(__name__)
+
     api_key = os.environ.get("AIRTABLE_API_KEY", "")
     base_id = os.environ.get("AIRTABLE_BASE_ID", "")
     table_name = os.environ.get("AIRTABLE_TABLE_NAME", "Content Station")
@@ -348,14 +356,19 @@ def save_draft_to_airtable(
         "Platform": [plat_name],
         "Status": status,
         "Brand": brand,
-        "Content Type": "Article",
+        "Content Type": content_type,
         "Created By": created_by,
         "Hashtags": hashtags,
         "Scheduled Date": scheduled_time,
         "Image file": [{"url": image_url}] if image_url else None,
-        "Gambar": [{"url": image_url}] if image_url else None
+        "Gambar": [{"url": image_url}] if image_url else None,
+        "Original Price": original_price if original_price else None,
+        "Seller Location": seller_location if seller_location else None,
+        "Source URL": source_url if source_url else None,
+        "Product Link": source_url if source_url else None
     }
     fields = {k: v for k, v in fields.items() if v is not None}
+
 
     try:
         with httpx.Client(timeout=15) as client:
@@ -423,6 +436,81 @@ def save_thread_posts_to_airtable(parent_record_id: str, posts: list[str], platf
     except Exception as e:
         logger.error(f"Error saving thread posts to Airtable: {e}")
         return {"status": "error", "error": str(e)}
+
+
+def run_apify_actor(actor_id: str, run_input: dict) -> dict:
+    """Run an Apify actor, wait for completion, and return the dataset items.
+    Useful for scraping social media platforms (X, Shopee, Instagram, etc.) where custom actors are needed.
+    
+    Args:
+        actor_id: The ID/name of the Apify actor (e.g. 'kaitoeasyapi/twitter-x-data-tweet-scraper-pay-per-result-cheapest').
+        run_input: A dictionary of key-value pairs containing the input parameters for the actor.
+    """
+    import os
+    import httpx
+    import time
+    import logging
+    logger = logging.getLogger(__name__)
+
+    token = os.environ.get("APIFY_API_TOKEN", "")
+    if not token:
+        return {"status": "error", "error": "APIFY_API_TOKEN is not configured in .env"}
+
+    logger.info(f"Running Apify actor '{actor_id}'...")
+    
+    # 1. Trigger Actor run
+    url_run = f"https://api.apify.com/v2/acts/{actor_id}/runs"
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.post(url_run, params={"token": token}, json=run_input)
+            resp.raise_for_status()
+            run_data = resp.json()["data"]
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to trigger Apify actor: {str(e)}"}
+
+    run_id = run_data["id"]
+    dataset_id = run_data["defaultDatasetId"]
+    logger.info(f"Actor run started. Run ID: {run_id}, Dataset ID: {dataset_id}")
+
+    # 2. Poll for completion
+    url_status = f"https://api.apify.com/v2/actor-runs/{run_id}"
+    max_retries = 30  # 5 minutes max
+    for attempt in range(max_retries):
+        time.sleep(10)
+        try:
+            with httpx.Client(timeout=15) as client:
+                resp = client.get(url_status, params={"token": token})
+                resp.raise_for_status()
+                status_data = resp.json()["data"]
+                status = status_data["status"]
+                logger.info(f"Attempt {attempt+1}: Run status = {status}")
+                if status == "SUCCEEDED":
+                    break
+                elif status in ["FAILED", "ABORTED", "TIMED-OUT"]:
+                    return {"status": "error", "error": f"Actor run failed with status: {status}"}
+        except Exception as e:
+            logger.warning(f"Error checking run status: {str(e)}")
+    else:
+        return {"status": "error", "error": "Actor run timed out"}
+
+    # 3. Fetch Dataset items
+    url_dataset = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
+    try:
+        with httpx.Client(timeout=30) as client:
+            resp = client.get(url_dataset, params={"token": token})
+            resp.raise_for_status()
+            items = resp.json()
+            return {
+                "status": "success",
+                "actorId": actor_id,
+                "runId": run_id,
+                "datasetId": dataset_id,
+                "items": items,
+                "count": len(items)
+            }
+    except Exception as e:
+        return {"status": "error", "error": f"Failed to fetch dataset items: {str(e)}"}
+
 
 
 

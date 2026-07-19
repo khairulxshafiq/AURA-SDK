@@ -43,7 +43,7 @@ except ImportError as e:
     logger.error("=" * 80)
     raise e
 
-from tools import scrape_url, search_web, save_user_fact, update_user_preference
+from tools import scrape_url, search_web, save_user_fact, update_user_preference, run_apify_actor
 
 # ─── Directories ──────────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -154,7 +154,7 @@ def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[scrape_url, search_web, save_user_fact, update_user_preference],
+        tools=[scrape_url, search_web, save_user_fact, update_user_preference, run_apify_actor],
         policies=[policy.allow_all()],
         system_instructions=_get_dynamic_instructions(),
     )
@@ -197,6 +197,7 @@ def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
             _to_openai_tool(search_web),
             _to_openai_tool(save_user_fact),
             _to_openai_tool(update_user_preference),
+            _to_openai_tool(run_apify_actor),
         ],
         policies=[policy.allow_all()],
         system_instructions=_get_dynamic_instructions(),
@@ -892,6 +893,9 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
     source_match = re.search(r"\[DRAFT_SOURCE_URL:\s*(https?://[^\s\]]+)\]", response_text, re.IGNORECASE)
     master_match = re.search(r"\[DRAFT_MASTER_ARTICLE:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
     hashtags_match = re.search(r"\[DRAFT_HASHTAGS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+    type_match = re.search(r"\[DRAFT_CONTENT_TYPE:\s*(.+?)\]", response_text, re.IGNORECASE)
+    price_match = re.search(r"\[DRAFT_ORIGINAL_PRICE:\s*(.+?)\]", response_text, re.IGNORECASE)
+    location_match = re.search(r"\[DRAFT_SELLER_LOCATION:\s*(.+?)\]", response_text, re.IGNORECASE)
 
     if title_match or master_match:
         image_url = image_match.group(1).strip() if image_match else ""
@@ -922,8 +926,17 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             except Exception as e:
                 logger.warning(f"Could not send photo preview: {e}")
 
-        # Save draft in SQLite with interactive state: select_platforms
-        initial_state = json.dumps({"phase": "select_platforms", "selected": []})
+        # Save draft in SQLite with interactive state: select_platforms & metadata
+        state_dict = {
+            "phase": "select_platforms",
+            "selected": [],
+            "shopee_metadata": {
+                "content_type": type_match.group(1).strip() if type_match else "Article",
+                "original_price": price_match.group(1).strip() if price_match else "",
+                "seller_location": location_match.group(1).strip() if location_match else ""
+            }
+        }
+        initial_state = json.dumps(state_dict)
         memory.save_draft(
             user_id=user_id,
             title=title,
@@ -954,6 +967,9 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         clean_text = re.sub(r"\[DRAFT_SOURCE_URL:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\[DRAFT_MASTER_ARTICLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
         clean_text = re.sub(r"\[DRAFT_HASHTAGS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        clean_text = re.sub(r"\[DRAFT_CONTENT_TYPE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r"\[DRAFT_ORIGINAL_PRICE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
+        clean_text = re.sub(r"\[DRAFT_SELLER_LOCATION:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
         clean_text = re.sub(r"\[DRAFT_FB:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
         clean_text = re.sub(r"\[DRAFT_THREADS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
         clean_text = re.sub(r"\[DRAFT_TWITTER:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
@@ -1199,6 +1215,18 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source_url = draft["source_url"]
     selected_platform = draft["selected_platform"]
     platform_draft = draft["platform_draft"]
+    content_type = "Article"
+    original_price = ""
+    seller_location = ""
+    try:
+        import json
+        state_data = json.loads(draft.get("state", "{}"))
+        meta = state_data.get("shopee_metadata", {})
+        content_type = meta.get("content_type", "Article")
+        original_price = meta.get("original_price", "")
+        seller_location = meta.get("seller_location", "")
+    except Exception:
+        pass
 
     if not selected_platform or not platform_draft:
         await update.message.reply_text("⚠️ Sila pilih platform draf terlebih dahulu (cth: taip 'Facebook', 'Threads', 'X', atau 'Lemon8') sebelum melakukan pengesahan.")
@@ -1235,7 +1263,10 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         image_url=final_image_url,
         status=status,
         hashtags=hashtags,
-        scheduled_time=scheduled_time_iso
+        scheduled_time=scheduled_time_iso,
+        content_type=content_type,
+        original_price=original_price,
+        seller_location=seller_location
     )
 
     if res["status"] == "success":
