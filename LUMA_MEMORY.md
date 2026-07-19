@@ -110,6 +110,8 @@
   * Switched default Shopee actor to `gio21/shopee-scraper` (which works without residential proxies on Free Apify tier) and implemented automatic shortened link canonicalization/resolution inside `run_apify_actor` tool.
 
   * Added API Key utilization prefixes to AURA bot responses: Free keys show `F1`, `F2`... and Paid/OpenRouter keys show `P1`... to track token usage.
+  * Implemented Telegram photo message handler (`filters.PHOTO`) in `main.py` allowing AURA to download and process user-uploaded images natively via Gemini/OpenRouter multimodal vision API.
+
 
 
 
