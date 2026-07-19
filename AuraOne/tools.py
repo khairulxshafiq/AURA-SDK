@@ -461,11 +461,35 @@ def run_apify_actor(actor_id: str, run_input: dict) -> dict:
     # Ensure slash is replaced with tilde for URL formatting in Apify API
     actor_id_url = actor_id.replace("/", "~")
     
+    # Resolve shortened URLs (e.g., Shopee redirects) before passing to Apify
+    resolved_input = run_input.copy()
+    if "location" in resolved_input and isinstance(resolved_input["location"], str) and resolved_input["location"].startswith("http"):
+        try:
+            with httpx.Client(timeout=10, follow_redirects=True) as client:
+                resp = client.get(resolved_input["location"])
+                resolved_url = str(resp.url)
+                logger.info(f"Resolved redirect for location URL: {resolved_input['location']} -> {resolved_url}")
+                resolved_input["location"] = resolved_url
+        except Exception as e:
+            logger.warning(f"Could not resolve redirect: {e}")
+            
+    elif "startUrls" in resolved_input and isinstance(resolved_input["startUrls"], list):
+        for idx, entry in enumerate(resolved_input["startUrls"]):
+            if isinstance(entry, dict) and "url" in entry and entry["url"].startswith("http"):
+                try:
+                    with httpx.Client(timeout=10, follow_redirects=True) as client:
+                        resp = client.get(entry["url"])
+                        resolved_url = str(resp.url)
+                        logger.info(f"Resolved redirect for startUrls[{idx}]: {entry['url']} -> {resolved_url}")
+                        resolved_input["startUrls"][idx]["url"] = resolved_url
+                except Exception as e:
+                    logger.warning(f"Could not resolve redirect: {e}")
+
     # 1. Trigger Actor run
     url_run = f"https://api.apify.com/v2/acts/{actor_id_url}/runs"
     try:
         with httpx.Client(timeout=30) as client:
-            resp = client.post(url_run, params={"token": token}, json=run_input)
+            resp = client.post(url_run, params={"token": token}, json=resolved_input)
             resp.raise_for_status()
             run_data = resp.json()["data"]
     except Exception as e:
