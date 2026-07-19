@@ -54,6 +54,19 @@
   - Replaced the Airtable update node `Mark as Posted` with Version 1 to bypass n8n's Version 2 `columns.matchingColumns` validation schema bug.
   - Successfully ran a live verification test: direct post was successfully published on the Facebook Page `Sakluma.HQ` (returning 200 OK), and the workflow is now fully active (ON) and self-healing.
 
+### 8. 7 Facebook Narrative Personas (Implemented)
+* **Goal**: Shift Facebook draft generation from robotic/formal AI style to authentic, humanized storytelling.
+* **Flow**: Redesigned the sub-options menu keyboard in `main.py` and the draft generator system instructions to support 7 distinct narrative lenses for Facebook:
+  - **Berita 📰**: Formal Malaysian news lead (`Kuala Lumpur - ...`) with simplified reporting tone.
+  - **Pemerhati 👀**: Storyteller/ Kampung observer. Starts with a hook, reflects on observations, and ends with a moral lesson (80-150 words).
+  - **Kedai Kopi ☕**: Opinion mode. Bold personal views using citizen speak ("Pada aku", "Sejujurnya") and fact observations (100-200 words).
+  - **Viral Santai 🔥**: Classic viral hook ("Wehh.", "Eh.") combined with human reaction, facts, and engagement question (80-150 words).
+  - **Makcik Bawang 😆**: Dramatic and humorous gossip share. High engagement hook, gossip reaction, and audience questions (80-150 words).
+  - **Kisah Inspirasi ❤️**: Uplifting, positive focus on human values and achievements.
+  - **Borak Kawan 🫱🏻🫲🏻**: Sempurna Coffee Talk. Casual chat with friends using conversational expressions ("Wehh", "Ohoiii", "Hahaha") (50-120 words).
+* **Hashtag Cleanup**: Reduced hashtags across all Facebook personas to a maximum of 2 clean, short, human-looking tags (e.g., `#saklumanews #saklumaprihatin`).
+
+
 ---
 
 ## 📌 SQLite Memory Updates (`memory.py`)
