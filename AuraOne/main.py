@@ -427,13 +427,26 @@ def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
     keyboard = []
     
     if "facebook" in selected:
-        curr_fb = options.get("facebook", "")
-        fb_bercerita_status = "✅ " if curr_fb == "bercerita" else "⬜ "
-        fb_berita_status = "✅ " if curr_fb == "berita" else "⬜ "
-        keyboard.append([
-            InlineKeyboardButton(f"{fb_bercerita_status}FB: Bercerita 📖", callback_data="sub:facebook:bercerita"),
-            InlineKeyboardButton(f"{fb_berita_status}FB: Berita 📰", callback_data="sub:facebook:berita")
-        ])
+        curr_fb = options.get("facebook", "viral_santai")
+        personas = [
+            ("berita", "FB: Berita 📰"),
+            ("pemerhati", "FB: Pemerhati 👀"),
+            ("kedai_kopi", "FB: Kedai Kopi ☕"),
+            ("viral_santai", "FB: Viral Santai 🔥"),
+            ("makcik_bawang", "FB: Makcik Bawang 😆"),
+            ("kisah_inspirasi", "FB: Kisah Inspirasi ❤️"),
+            ("borak_kawan", "FB: Borak Kawan 🫱🏻🫲🏻")
+        ]
+        
+        row = []
+        for code, label in personas:
+            status = "✅ " if curr_fb == code else "⬜ "
+            row.append(InlineKeyboardButton(f"{status}{label}", callback_data=f"sub:facebook:{code}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
         
     if "x" in selected or "threads" in selected:
         curr_len = options.get("thread_len", 5)
@@ -451,21 +464,87 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
     global current_key_idx
     style_instruction = ""
     if plat == "facebook":
-        if fb_style == "bercerita":
-            style_instruction = (
-                "Tulis semula dalam gaya BERCERITA (Editorial). Ikuti peraturan berikut secara ketat:\n"
-                "- Mulakan post dengan CTA HOOK yang sangat menarik dan berimpak tinggi untuk membuatkan pembaca berhenti skrol dan membaca.\n"
-                "- Tulis kandungan dalam bentuk perenggan bercerita yang santai dan mengalir.\n"
-                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa.\n"
-                "- Di bahagian bawah sekali, letakkan hashtag yang relevan dan WAJIB sertakan hashtag: #saklumastory"
-            )
-        else:
+        if fb_style == "berita":
             style_instruction = (
                 "Tulis semula dalam gaya BERITA (News Report). Ikuti peraturan berikut secara ketat:\n"
                 "- Mulakan perenggan pertama dengan format laporan berita Malaysia (cth: 'Kuala Lumpur - ...' atau 'Dungun - Seorang lelaki dipercayai...').\n"
                 "- Gunakan laras bahasa pemberitaan yang formal tetapi mudah difahami.\n"
-                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa.\n"
-                "- Di bahagian bawah sekali, letakkan hashtag yang relevan dan WAJIB sertakan hashtag: #saklumanews"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**). Tulis semuanya dalam teks biasa.\n"
+                "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumanews #saklumaprihatin. Tiada hashtag yang panjang lebar."
+            )
+        elif fb_style == "pemerhati":
+            style_instruction = (
+                "Anda ialah seorang pemerhati masyarakat. Ikuti peraturan berikut secara ketat:\n"
+                "- JANGAN menulis seperti wartawan atau portal berita formal.\n"
+                "- JANGAN tulis fakta berita di awal perenggan. Mulakan dengan perkara paling menarik yang anda nampak berdasarkan kisah ini.\n"
+                "- Gunakan ayat pendek dan gaya bahasa manusia biasa yang berkongsi pemerhatian di Facebook.\n"
+                "- Formula: Apa aku nampak -> Apa yang menarik -> Apa yang kita boleh belajar -> Penutup ringkas.\n"
+                "- Nada: Santai, ringkas, human, berbentuk refleksi, tidak terlalu emosional atau dramatik.\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**).\n"
+                "- Hadkan panjang draf sekitar 80–150 patah perkataan.\n"
+                "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumanews #saklumaprihatin. Tiada hashtag yang panjang lebar."
+            )
+        elif fb_style == "kedai_kopi":
+            style_instruction = (
+                "Anda ialah seorang pengguna Facebook yang berkongsi pendapat peribadi. Ikuti peraturan berikut secara ketat:\n"
+                "- JANGAN menjadi neutral seperti wartawan. Berikan pandangan peribadi berdasarkan fakta kisah ini.\n"
+                "- Gunakan bahasa rakyat biasa dan ayat-ayat pendek.\n"
+                "- Boleh menggunakan frasa seperti: 'Pada aku', 'Sejujurnya', 'Bagi aku', 'Kalau betul macam ni'.\n"
+                "- Formula: Pendirian -> Bukti -> Pemerhatian -> Penutup.\n"
+                "- Nada: Santai, berani, tidak kasar, tidak provokatif.\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**).\n"
+                "- Hadkan panjang draf sekitar 100–200 patah perkataan.\n"
+                "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumanews #saklumaprihatin. Tiada hashtag yang panjang lebar."
+            )
+        elif fb_style == "makcik_bawang":
+            style_instruction = (
+                "Tulis seperti pengguna Facebook (Makcik Bawang Premium) yang sedang berkongsi berita viral kepada rakan-rakan. Ikuti peraturan berikut secara ketat:\n"
+                "- Mulakan dengan HOOK pendek yang dramatik/selamba (cth: 'Wehh.', 'Eh.', 'Serius la.', 'Aku je ke rasa pelik?').\n"
+                "- JANGAN menulis seperti wartawan, jangan ulang tajuk berita, jangan tulis terlalu panjang.\n"
+                "- Berikan reaksi manusia yang kelakar/selamba/terkejut terhadap kisah/berita ini.\n"
+                "- Pilih hanya 2-4 fakta paling menarik untuk diulas.\n"
+                "- Akhiri dengan soalan kepada audiens untuk memancing komen (cth: 'Korang rasa macam mana?', 'Kalau jadi dekat korang?').\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**).\n"
+                "- Hadkan panjang draf sekitar 80-150 patah perkataan.\n"
+                "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumanews #saklumaprihatin."
+            )
+        elif fb_style == "kisah_inspirasi":
+            style_instruction = (
+                "Tulis dalam gaya yang menyentuh hati dan memberi inspirasi kepada pembaca. Ikuti peraturan berikut secara ketat:\n"
+                "- Fokus kepada perjuangan, kejayaan, kebaikan manusia, atau nilai murni yang terdapat dalam kisah ini.\n"
+                "- Nada: Hangat, prihatin, menyentuh jiwa, positif.\n"
+                "- JANGAN menulis seperti portal berita formal. Gunakan bahasa santai Malaysia yang ikhlas dan menyentuh emosi pembaca.\n"
+                "- Akhiri dengan pengajaran positif atau kata-kata semangat.\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**).\n"
+                "- Hadkan panjang draf sekitar 80-150 patah perkataan.\n"
+                "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumainspirasi #saklumaprihatin."
+            )
+        elif fb_style == "borak_kawan":
+            style_instruction = (
+                "Anda sedang bercerita kepada kawan-kawan Facebook secara terus terang (Coffee Talk). Ikuti peraturan berikut secara ketat:\n"
+                "- Tulis seperti sembang santai di kedai kopi.\n"
+                "- Boleh guna kata seru seperti: 'Wehh', 'Ohoiii', 'Hahaha', 'Tengok ni', 'Aku rasa', 'Korang perasan tak'.\n"
+                "- Gunakan ayat pendek. Tidak perlu terlalu tersusun. Boleh ada gurauan ringan.\n"
+                "- Fokus kepada pengalaman manusia dan cerita kecil dalam kehidupan daripada kisah tersebut.\n"
+                "- Formula: Reaction -> Cerita -> Observation -> Penutup santai.\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**).\n"
+                "- Hadkan panjang draf sekitar 50–120 patah perkataan.\n"
+                "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumanews #saklumaprihatin."
+            )
+        else: # Default is viral_santai
+            style_instruction = (
+                "Tulis seperti pengguna Facebook Malaysia yang sedang berkongsi berita viral kepada rakan-rakan. Ikuti peraturan berikut secara ketat:\n"
+                "- JANGAN menulis seperti wartawan atau portal berita. JANGAN ulang tajuk berita.\n"
+                "- Formula:\n"
+                "  1. Mulakan dengan HOOK pendek (contoh: 'Wehh.', 'Eh.', 'Serius la.', 'Korang tengok ni.', 'Aku respect part ni.').\n"
+                "  2. Beri reaksi manusia terhadap berita.\n"
+                "  3. Pilih hanya 2-4 fakta paling menarik.\n"
+                "  4. Tambahkan pandangan santai atau refleksi kehidupan.\n"
+                "  5. Akhiri dengan soalan untuk engagement.\n"
+                "- Gaya bahasa: Bahasa Malaysia santai, ayat pendek, human, Facebook style, sedikit emosi dan reaksi, tidak terlalu formal.\n"
+                "- JANGAN gunakan sebarang tulisan bold (cth: **teks**).\n"
+                "- Hadkan panjang draf sekitar 80-150 patah perkataan.\n"
+                "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumanews #saklumaprihatin."
             )
     elif plat in ["threads", "x"]:
         style_instruction = (
@@ -642,7 +721,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             state_data["options"] = state_data.get("options", {})
             
             if "facebook" in selected and "facebook" not in state_data["options"]:
-                state_data["options"]["facebook"] = "bercerita"
+                state_data["options"]["facebook"] = "viral_santai"
             if ("x" in selected or "threads" in selected) and "thread_len" not in state_data["options"]:
                 state_data["options"]["thread_len"] = 5
 
