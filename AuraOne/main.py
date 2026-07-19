@@ -548,14 +548,56 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 "- Gunakan sedikit hashtag sahaja (maksimum 2), contohnya: #saklumanews #saklumaprihatin."
             )
     elif plat in ["threads", "x"]:
+        # Translate global persona style to fast-paced X/Threads equivalent
+        style_title = fb_style.upper()
+        if fb_style == "makcik_bawang":
+            style_title = "GENZ BAWANG (Gossipy, fast-paced Gen Z style)"
+            style_details = (
+                "- Gunakan gaya 'GenZ Bawang' yang sangat laju dan santai (gaya gosip Gen Z: 'weh', 'gila ah', 'spill the tea', 'kantoi', 'serius lah').\n"
+                "- Hook gempak di post pertama untuk tangkap perhatian dalam 2.9 saat!"
+            )
+        elif fb_style == "kedai_kopi":
+            style_details = (
+                "- Gaya sembang kedai kopi/pendapat ringkas yang berani, terus ke point, dan tidak neutral.\n"
+                "- Gunakan ungkapan rakyat Malaysia yang ringkas ('Pada aku', 'Persoalannya', 'Sampai bila')."
+            )
+        elif fb_style == "pemerhati":
+            style_details = (
+                "- Gaya pemerhati masyarakat. Post pertama mulakan dengan pemerhatian visual yang menarik, bukan fakta berita.\n"
+                "- Kongsi moral/pengajaran hidup secara santai di post akhir."
+            )
+        elif fb_style == "viral_santai":
+            style_details = (
+                "- Gaya viral sempoi dengan hook padat di post pertama ('Wehh.', 'Korang tengok ni.').\n"
+                "- Tulis seperti kawan kongsi cerita viral."
+            )
+        elif fb_style == "borak_kawan":
+            style_details = (
+                "- Gaya sembang kedai kopi paling santai ('Wehh', 'Hahaha', 'Aku rasa'). Tidak tersusun tetapi sangat human."
+            )
+        elif fb_style == "kisah_inspirasi":
+            style_details = (
+                "- Gaya menyentuh hati dan inspirasi ringkas yang positif."
+            )
+        else: # berita atau default
+            style_details = (
+                "- Gaya penyampaian berita ringkas, santai, dan padat."
+            )
+
+        # Image placement position: 2 if thread length is 3, else 3
+        img_pos = 2 if thread_length == 3 else 3
+
         style_instruction = (
-            f"Tulis semula dalam bentuk BEBENANG (Thread) sebanyak tepat {thread_length} perenggan/bahagian.\n"
-            f"- JANGAN sesekali meletakkan nombor bahagian seperti '1/{thread_length}', '2/{thread_length}', '1.', '2.', atau sebarang indeks nombor di permulaan perenggan. Mulakan setiap bahagian/perenggan secara terus dengan teks bersih.\n"
-            f"- Terjemahkan fakta artikel asal kepada bahasa rojak santai Malaysia yang sangat mudah difahami oleh pelbagai kaum (Melayu, Cina, India).\n"
-            f"- Jaga nada penulisan agar neutral (tidak berat sebelah).\n"
-            f"- Selang-selikan maklumat dengan soalan ringkas kepada pembaca untuk memancing respon/komen (CTA), tetapi jangan buat pada setiap bahagian bebenang (cukup sekadar 1-2 soalan di tempat yang sesuai).\n"
-            f"- JANGAN gunakan sebarang tulisan bold (cth: **teks**) di dalam draf ini. Tulis semuanya dalam teks biasa.\n"
-            f"- Sertakan hashtag di bahagian akhir bebenang."
+            f"Tulis semula dalam bentuk BEBENANG (Thread) {plat.upper()} sebanyak tepat {thread_length} perenggan/bahagian.\n"
+            f"Gunakan gaya persona: {style_title}.\n"
+            f"PERATURAN BEBENANG LAJU & HUMAN (Maksimum perhatian 2.9 saat):\n"
+            f"1. Post pertama (Thread #1) WAJIB berupa HOOK yang sangat pendek, padat, dan mencuri perhatian pembaca dengan pantas. Jangan tulis panjang lebar di post pertama!\n"
+            f"{style_details}\n"
+            f"2. JANGAN sesekali meletakkan nombor bahagian seperti '1/{thread_length}', '1.', atau sebarang indeks nombor di permulaan perenggan. Mulakan setiap bahagian/perenggan secara terus dengan teks bersih.\n"
+            f"3. WAJIB letakkan tag '[ATTACH_IMAGE]' secara literal di hujung draf Post #{img_pos} sahaja (Post #2 untuk bebenang 3, Post #3 untuk bebenang 5 atau 8) untuk menandakan kedudukan gambar.\n"
+            f"4. Bahasa: Terjemahkan fakta kepada bahasa rojak santai Malaysia yang sangat mudah difahami dan humanized.\n"
+            f"5. JANGAN gunakan sebarang tulisan bold (cth: **teks**). Tulis semuanya dalam teks biasa.\n"
+            f"6. Akhiri post terakhir dengan CTA/soalan santai pendek untuk memancing komen audiens."
         )
     elif plat == "lemon8":
         style_instruction = (
@@ -644,7 +686,7 @@ async def _generate_all_platform_drafts(
     generated_drafts = {}
     
     for plat in selected_platforms:
-        fb_style = options.get("facebook", "") if plat == "facebook" else ""
+        fb_style = options.get("facebook", "viral_santai")
         thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
         
         draft_text = await _call_draft_generator_model(plat, draft, fb_style, thread_length)
