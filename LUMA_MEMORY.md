@@ -99,4 +99,8 @@
 
 ## 📋 Future Roadmap / Pending Goals
 * [ ] **AURA Blog (Sakluma Blog)**: Set up auto-posting to a Blogger-style site for SEO/Google Web Ads.
-* [x] **Publishing Automation**: Complete the configuration of the n8n workflow for Facebook Page posting, sequence X/Threads loops, and schedule polling.
+* [x] **Publishing Automation (n8n)**: 
+  * Reverted and restored the workflow to execution 75 layout.
+  * Resolved Facebook API OAuth deprecated action error using Page Access Token directly via direct query parameters.
+  * Diagnosed and documented Threads API 500 media upload failure due to expired short-lived access token.
+
