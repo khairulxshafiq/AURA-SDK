@@ -116,7 +116,8 @@
   * Configured image analysis pipeline modes (Copy 100% JSON prompt generation, Default Vision QA, and FB drafting styles selection matching the article scraping inline style selection flow) in `persona.txt`.
   * Implemented Gemini API key cooldown caching (`COOLDOWN_KEYS`) backed by persistent SQLite storage to avoid sequential initialization latency on rate-limited keys, reducing fallback response time even after service restarts.
   * Patched SDK virtual environment file `litert_connection.py` to add `MODEL_TYPE_IMAGE` capability support to `LocalOpenAIConnectionStrategy`, and implemented local temp file photo caching with automated OpenRouter proxy payload rewriting to format and inject base64 `image_url` objects directly into fallback API calls. Cleared rate-limited `GEMINI_API_KEY` environment leakage before starting OpenRouter Agent sessions to prevent harness process validation errors.
-  * Implemented instant copywriting draft bypass: If the model directly outputs platform-specific blocks (like `[DRAFT_FB: ...]`), AURA bypasses the platform selection menu, immediately displays the draft, and presents a direct confirm keyboard button (`[Confirm & Post FACEBOOK]`). The `/confirm` text handler was also extended to parse and extract the correct platform draft from JSON format during direct confirmations.
+  * Implemented dynamic platform pre-selection: If the user mentions platforms (like `"fb"`, `"threads"`, `"x"`, etc.) in their text/caption prompt, AURA automatically checks them in the keyboard menu. Locked the drafting flow to always pass through the platform and style (persona) selection keyboard loop, ensuring consistency with the article scraping flow.
+
 
 
 
