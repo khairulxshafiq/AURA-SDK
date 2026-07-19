@@ -1575,7 +1575,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         else:
             clean = _clean_response(response_text)
-            prefix = f"[P1] {OPENROUTER_FALLBACK_MODEL}\n\n"
+            p_prefix = "P2" if OPENROUTER_FALLBACK_MODEL.lower().startswith("openai/") else "P1"
+            prefix = f"[{p_prefix}] {OPENROUTER_FALLBACK_MODEL}\n\n"
             final_text = _send_safe_message(f"{prefix}{clean}")
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
 
