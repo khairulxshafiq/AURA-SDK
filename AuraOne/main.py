@@ -1400,7 +1400,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_message += (
                 f"\n\n[SISTEM: Lokasi semasa user ialah {loc['address']} (Lat: {loc['latitude']}, Lon: {loc['longitude']}). "
                 f"Gunakan maklumat ini jika user mencari kedai makan, barang, tukang urut, rating, arah, atau jika bertanya 'saya dekat mana sekarang'. "
-                f"Untuk carian kedai/barang, gunakan kebolehan Search Web / Google Search yang anda miliki untuk mencari tempat terdekat dengan koordinat ini.]"
+                f"Untuk carian kedai/barang, gunakan carian web untuk mencari tempat terdekat dengan koordinat ini. "
+                f"PENTING: JANGAN sekali-kali memaparkan, menyebut, atau membuat nota tentang alamat/lokasi ini dalam jawapan anda melainkan ditanya secara spesifik oleh user!]"
             )
 
 
@@ -1417,11 +1418,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     num_keys = len(GEMINI_KEYS)
 
     import time
+    import memory
     for attempt in range(num_keys):
         active_key = GEMINI_KEYS[current_key_idx]
         
-        # Check if the key is currently on cooldown
-        cooldown_expiry = COOLDOWN_KEYS.get(active_key, 0.0)
+        # Check persistent cooldown from SQLite memory database
+        prefs = memory.get_preferences()
+        cooldown_expiry_str = prefs.get(f"cooldown:{active_key}", "0.0")
+        try:
+            cooldown_expiry = float(cooldown_expiry_str)
+        except ValueError:
+            cooldown_expiry = 0.0
+            
         if cooldown_expiry > time.time():
             logger.info(f"[Gemini] Key index {current_key_idx} is on cooldown for another {int(cooldown_expiry - time.time())}s. Skipping...")
             current_key_idx = (current_key_idx + 1) % num_keys
@@ -1446,8 +1454,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
         except Exception as gemini_err:
             if _is_rate_limit_error(gemini_err):
-                logger.warning(f"[Gemini] Rate limit hit for key index {current_key_idx}. Putting on 5-minute cooldown and rotating...")
-                COOLDOWN_KEYS[active_key] = time.time() + 300.0  # 5 minutes cooldown
+                logger.warning(f"[Gemini] Rate limit hit for key index {current_key_idx}. Putting on 5-minute persistent cooldown and rotating...")
+                memory.update_preference(f"cooldown:{active_key}", str(time.time() + 300.0))
                 current_key_idx = (current_key_idx + 1) % num_keys
                 continue
             else:
