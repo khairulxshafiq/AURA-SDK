@@ -1365,7 +1365,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_debug = DEBUG_USERS.get(user_id, False)
 
     user_message = ""
-    image_part = None
+    media_part = None
 
     if update.message.photo:
         photo = update.message.photo[-1]
@@ -1376,16 +1376,75 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             file_bytearray = await telegram_file.download_as_bytearray()
             img_bytes = bytes(file_bytearray)
             from google.antigravity import Image as AGImage
-            image_part = AGImage(data=img_bytes, mime_type="image/jpeg")
+            media_part = AGImage(data=img_bytes, mime_type="image/jpeg")
             logger.info(f"Loaded user photo of {len(img_bytes)} bytes for Gemini multimodal processing.")
         except Exception as e:
             logger.error(f"Failed to download incoming Telegram photo: {e}")
             await update.message.reply_text(f"⚠️ Gagal memuat turun gambar: {e}")
             return
+
+    elif update.message.video:
+        video = update.message.video
+        user_message = update.message.caption or "Analisis video ini."
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            telegram_file = await context.bot.get_file(video.file_id)
+            file_bytearray = await telegram_file.download_as_bytearray()
+            video_bytes = bytes(file_bytearray)
+            from google.antigravity import Video as AGVideo
+            # Fallback to standard MP4 if mime type not in SDK supported set
+            mime_type = video.mime_type or "video/mp4"
+            if mime_type not in ["video/3gpp", "video/avi", "video/mp4", "video/mpeg", "video/mpg", "video/quicktime", "video/webm", "video/wmv", "video/x-flv"]:
+                mime_type = "video/mp4"
+            media_part = AGVideo(data=video_bytes, mime_type=mime_type)
+            logger.info(f"Loaded user video of {len(video_bytes)} bytes ({mime_type}) for Gemini multimodal processing.")
+        except Exception as e:
+            logger.error(f"Failed to download incoming Telegram video: {e}")
+            await update.message.reply_text(f"⚠️ Gagal memuat turun video: {e}")
+            return
+
+    elif update.message.voice:
+        voice = update.message.voice
+        user_message = "Analisis audio/suara ini."
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            telegram_file = await context.bot.get_file(voice.file_id)
+            file_bytearray = await telegram_file.download_as_bytearray()
+            voice_bytes = bytes(file_bytearray)
+            from google.antigravity import Audio as AGAudio
+            mime_type = voice.mime_type or "audio/ogg"
+            if mime_type not in ["audio/wav", "audio/mp3", "audio/aac", "audio/ogg", "audio/flac", "audio/opus", "audio/mpeg", "audio/m4a", "audio/l16"]:
+                mime_type = "audio/ogg"
+            media_part = AGAudio(data=voice_bytes, mime_type=mime_type)
+            logger.info(f"Loaded user voice of {len(voice_bytes)} bytes ({mime_type}) for Gemini multimodal processing.")
+        except Exception as e:
+            logger.error(f"Failed to download incoming Telegram voice: {e}")
+            await update.message.reply_text(f"⚠️ Gagal memuat turun mesej suara: {e}")
+            return
+
+    elif update.message.document:
+        doc = update.message.document
+        user_message = update.message.caption or "Analisis dokumen ini."
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            telegram_file = await context.bot.get_file(doc.file_id)
+            file_bytearray = await telegram_file.download_as_bytearray()
+            doc_bytes = bytes(file_bytearray)
+            from google.antigravity import Document as AGDoc
+            mime_type = doc.mime_type or "text/plain"
+            if mime_type not in ["application/pdf", "application/json", "text/css", "text/csv", "text/html", "text/javascript", "text/plain", "text/rtf", "text/xml"]:
+                mime_type = "text/plain"
+            media_part = AGDoc(data=doc_bytes, mime_type=mime_type)
+            logger.info(f"Loaded user document of {len(doc_bytes)} bytes ({mime_type}) for Gemini multimodal processing.")
+        except Exception as e:
+            logger.error(f"Failed to download incoming Telegram document: {e}")
+            await update.message.reply_text(f"⚠️ Gagal memuat turun dokumen: {e}")
+            return
+
     else:
         user_message = update.message.text
 
-    if not user_message:
+    if not user_message and not media_part:
         return
 
     if user_message:
@@ -1441,7 +1500,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
             async with Agent(gemini_config) as agent:
-                chat_input = [image_part, user_message] if image_part else user_message
+                chat_input = [media_part, user_message] if media_part else user_message
                 response = await agent.chat(chat_input)
                 response_text = await response.text()
 
@@ -1494,7 +1553,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         async with Agent(or_config) as agent:
-            chat_input = [image_part, user_message] if image_part else user_message
+            chat_input = [media_part, user_message] if media_part else user_message
             response = await agent.chat(chat_input)
             response_text = await response.text()
 
@@ -1556,7 +1615,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, handle_location))
-    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.VOICE | filters.Document.ALL) & ~filters.COMMAND, handle_message))
 
 
 
