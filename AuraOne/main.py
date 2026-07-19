@@ -249,6 +249,7 @@ if not GEMINI_KEYS:
     GEMINI_KEYS.append("DUMMY_KEY")
 
 current_key_idx = 0
+COOLDOWN_KEYS = {}  # Cache for rate-limited API keys with expiration timestamps
 logger.info(f"Loaded {len(GEMINI_KEYS)} Gemini API keys for rotation.")
 
 
@@ -1415,8 +1416,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     response_text = ""
     num_keys = len(GEMINI_KEYS)
 
+    import time
     for attempt in range(num_keys):
         active_key = GEMINI_KEYS[current_key_idx]
+        
+        # Check if the key is currently on cooldown
+        cooldown_expiry = COOLDOWN_KEYS.get(active_key, 0.0)
+        if cooldown_expiry > time.time():
+            logger.info(f"[Gemini] Key index {current_key_idx} is on cooldown for another {int(cooldown_expiry - time.time())}s. Skipping...")
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
+
         os.environ["GEMINI_API_KEY"] = active_key
         gemini_config = _build_gemini_config(conv_id)
 
@@ -1436,7 +1446,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
         except Exception as gemini_err:
             if _is_rate_limit_error(gemini_err):
-                logger.warning(f"[Gemini] Rate limit hit for key index {current_key_idx}. Rotating...")
+                logger.warning(f"[Gemini] Rate limit hit for key index {current_key_idx}. Putting on 5-minute cooldown and rotating...")
+                COOLDOWN_KEYS[active_key] = time.time() + 300.0  # 5 minutes cooldown
                 current_key_idx = (current_key_idx + 1) % num_keys
                 continue
             else:
