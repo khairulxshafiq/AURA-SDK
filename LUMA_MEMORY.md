@@ -108,6 +108,8 @@
   * Implemented and registered generic `run_apify_actor` tool in `tools.py` and `main.py`.
   * Integrated Shopee Affiliate Pipeline: Configured custom softsell copywriting rules in `persona.txt` to tell stories and place product affiliate links at the very end of posts. Extended `save_draft_to_airtable` and metadata parsing in `main.py` to support `Content Type` = `"Shopee"`, `Original Price`, and `Seller Location` fields with dynamic self-healing schema fallback.
   * Switched default Shopee actor to `xtracto/shopee-scraper` (All-In-One) and implemented automatic slash-to-tilde (`~`) conversion inside `run_apify_actor` tool for REST API compatibility.
+  * Added API Key utilization prefixes to AURA bot responses: Free keys show `F1`, `F2`... and Paid/OpenRouter keys show `P1`... to track token usage.
+
 
 
 
