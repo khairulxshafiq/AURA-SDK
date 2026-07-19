@@ -64,6 +64,11 @@
   - **Makcik Bawang 😆**: Dramatic and humorous gossip share. High engagement hook, gossip reaction, and audience questions (80-150 words).
   - **Kisah Inspirasi ❤️**: Uplifting, positive focus on human values and achievements.
   - **Borak Kawan 🫱🏻🫲🏻**: Sempurna Coffee Talk. Casual chat with friends using conversational expressions ("Wehh", "Ohoiii", "Hahaha") (50-120 words).
+* **X / Threads Persona Integration (Implemented)**: Mapped the global chosen style to X/Threads drafts:
+  - Generates fast-paced content tailored for X/Threads' quick reader attention (2.9-second window).
+  - First post (Thread #1) is always configured as a highly engaging short hook.
+  - Automatically translates "Makcik Bawang" to "GenZ Bawang" (fast-paced Gen Z gossip, using terms like 'weh', 'gila ah', 'spill the tea', 'kantoi').
+  - **Dynamic Image Placement Tag**: Explicitly injects a `[ATTACH_IMAGE]` tag at the end of the correct post based on thread length (Post #2 for 3-part threads, Post #3 for 5-part and 8-part threads) to guide posting.
 * **Hashtag Cleanup**: Reduced hashtags across all Facebook personas to a maximum of 2 clean, short, human-looking tags (e.g., `#saklumanews #saklumaprihatin`).
 
 
