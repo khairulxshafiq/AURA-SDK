@@ -114,6 +114,8 @@
 
   * Configured image analysis pipeline modes (Copy 100% JSON prompt generation, Default Vision QA, and FB drafting styles selection matching the article scraping inline style selection flow) in `persona.txt`.
   * Implemented Gemini API key cooldown caching (`COOLDOWN_KEYS`) backed by persistent SQLite storage to avoid sequential initialization latency on rate-limited keys, reducing fallback response time even after service restarts.
+  * Patched SDK virtual environment file `litert_connection.py` to add `MODEL_TYPE_IMAGE` capability support to `LocalOpenAIConnectionStrategy`, enabling multimodal image processing for OpenRouter fallback. Cleared rate-limited `GEMINI_API_KEY` environment leakage before starting OpenRouter Agent sessions to prevent harness process validation errors.
+
 
 
 
