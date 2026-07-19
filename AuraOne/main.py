@@ -986,35 +986,21 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             except Exception as e:
                 logger.warning(f"Could not send photo preview: {e}")
 
-        # Check if the response already contains direct platform drafts
-        fb_match = re.search(r"\[DRAFT_FB:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        threads_match = re.search(r"\[DRAFT_THREADS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        twitter_match = re.search(r"\[DRAFT_TWITTER:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        lemon8_match = re.search(r"\[DRAFT_LEMON8:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-
-        platform_drafts = {}
-        if fb_match:
-            platform_drafts["facebook"] = fb_match.group(1).strip()
-        if threads_match:
-            platform_drafts["threads"] = threads_match.group(1).strip()
-        if twitter_match:
-            platform_drafts["x"] = twitter_match.group(1).strip()
-        if lemon8_match:
-            platform_drafts["lemon8"] = lemon8_match.group(1).strip()
-
-        selected_platform = ""
-        platform_draft_json = ""
-        phase = "select_platforms"
+        # Check if the user requested any platforms in their prompt message
         selected_platforms_list = []
-        if platform_drafts:
-            selected_platform = list(platform_drafts.keys())[0]
-            platform_draft_json = json.dumps(platform_drafts)
-            phase = "confirm_direct"
-            selected_platforms_list = list(platform_drafts.keys())
+        user_txt = (update.message.text or update.message.caption or "").lower()
+        if "fb" in user_txt or "facebook" in user_txt:
+            selected_platforms_list.append("facebook")
+        if "threads" in user_txt:
+            selected_platforms_list.append("threads")
+        if "twitter" in user_txt or " x " in f" {user_txt} ":
+            selected_platforms_list.append("x")
+        if "lemon8" in user_txt:
+            selected_platforms_list.append("lemon8")
 
         # Save draft in SQLite with interactive state: select_platforms & metadata
         state_dict = {
-            "phase": phase,
+            "phase": "select_platforms",
             "selected": selected_platforms_list,
             "shopee_metadata": {
                 "content_type": type_match.group(1).strip() if type_match else "Article",
@@ -1032,8 +1018,6 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             telegram_file_id=telegram_file_id,
             counter_val=counter,
             source_url=source_url,
-            selected_platform=selected_platform,
-            platform_draft=platform_draft_json,
             state=initial_state
         )
         logger.info(f"Saved content draft for user {user_id}: {title} (counter_val={counter})")
@@ -1066,10 +1050,7 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
 
         # Prepare platform inline keyboard
         clean_text = clean_text.strip()
-        if platform_drafts:
-            reply_markup = _get_direct_confirm_keyboard(platform_drafts)
-        else:
-            reply_markup = _get_platform_keyboard({"selected": []})
+        reply_markup = _get_platform_keyboard(state_dict)
         
         await update.message.reply_text(
             clean_text, 
