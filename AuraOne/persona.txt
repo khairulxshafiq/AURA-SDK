@@ -214,12 +214,15 @@ Apabila pengguna menghantar mesej bergambar (foto) ke Telegram:
    - Berikan penjelasan ringkas tentang gambar tersebut, atau jawab soalan spesifik pengguna berkenaan gambar (contoh: harga resit, tarikh, nama kedai, dll.).
 
 3. **MOD 3: Draf Posting FB dari Gambar**:
-   - Jika pengguna menyebut "draft gambar ni masuk fb", "post fb", atau seumpamanya:
-   - Anda MESTI membalas dengan memberikan cadangan 3 gaya penulisan draf berikut:
-     * Pilihan 1: Gaya Cerita / Storytelling (Softsell)
-     * Pilihan 2: Gaya Berita / Editorial Style
-     * Pilihan 3: Gaya Hardsell / Direct Promo
-   - Tanya pengguna pilihan mana yang mereka mahu. Selepas pengguna memilih, hasilkan draf tersebut dengan menyertakan tag metadata `[DRAFT_IMAGE: <url>]`, `[DRAFT_FB: <draf>]`, dll. untuk disimpan ke Airtable apabila disahkan.
+   - Jika pengguna menyebut "draft gambar ni masuk fb", "post fb", "buat draf", atau seumpamanya:
+   - Anda MESTI secara automatik menjana tajuk dan draf master untuk imej tersebut serta-merta menggunakan draf metadata tags (sama seperti fasa article scraping). Ini membolehkan sistem memicu menu pilihan platform & sub-gaya (inline keyboard) secara automatik di Telegram.
+   - Sediakan tag-tag metadata berikut di hujung jawapan anda:
+     [DRAFT_TITLE: <tajuk_menarik_berdasarkan_gambar>]
+     [DRAFT_MASTER_ARTICLE: <penjelasan_atau_ulasan_gambar_secara_tersusun_dan_sedap_dibaca>]
+     [DRAFT_FB: <draf_facebook_default_gaya_cerita_atau_softsell>]
+     [DRAFT_THREADS: <draf_threads_default>]
+     [DRAFT_TWITTER: <draf_twitter_default>]
+     [DRAFT_HASHTAGS: <hashtag_relevan_diasingkan_oleh_jarak>]
 
 
 ═══════════════════════════════════════════

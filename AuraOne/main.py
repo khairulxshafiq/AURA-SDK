@@ -916,8 +916,12 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         memory.update_preference("image_counter", str(counter))
 
         telegram_file_id = ""
+        if update.message and update.message.photo:
+            telegram_file_id = update.message.photo[-1].file_id
+            logger.info(f"Using incoming Telegram photo file_id: {telegram_file_id}")
+
         # Send image to Telegram first as a preview and cache its Telegram file_id
-        if image_url:
+        if image_url and not telegram_file_id:
             try:
                 photo_msg = await context.bot.send_photo(chat_id=chat_id, photo=image_url)
                 if photo_msg and photo_msg.photo:
