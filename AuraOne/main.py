@@ -1355,10 +1355,33 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global current_key_idx
-    user_message = update.message.text
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     is_debug = DEBUG_USERS.get(user_id, False)
+
+    user_message = ""
+    image_part = None
+
+    if update.message.photo:
+        photo = update.message.photo[-1]
+        user_message = update.message.caption or "Analisis gambar ini."
+        try:
+            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            telegram_file = await context.bot.get_file(photo.file_id)
+            file_bytearray = await telegram_file.download_as_bytearray()
+            img_bytes = bytes(file_bytearray)
+            from google.antigravity import Image as AGImage
+            image_part = AGImage(data=img_bytes, mime_type="image/jpeg")
+            logger.info(f"Loaded user photo of {len(img_bytes)} bytes for Gemini multimodal processing.")
+        except Exception as e:
+            logger.error(f"Failed to download incoming Telegram photo: {e}")
+            await update.message.reply_text(f"⚠️ Gagal memuat turun gambar: {e}")
+            return
+    else:
+        user_message = update.message.text
+
+    if not user_message:
+        return
 
     if user_message:
         msg_clean = user_message.strip().lower()
@@ -1396,7 +1419,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
             async with Agent(gemini_config) as agent:
-                response = await agent.chat(user_message)
+                chat_input = [image_part, user_message] if image_part else user_message
+                response = await agent.chat(chat_input)
                 response_text = await response.text()
 
                 if not conv_id:
@@ -1447,7 +1471,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     try:
         async with Agent(or_config) as agent:
-            response = await agent.chat(user_message)
+            chat_input = [image_part, user_message] if image_part else user_message
+            response = await agent.chat(chat_input)
             response_text = await response.text()
 
             if not conv_id:
@@ -1508,7 +1533,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, handle_location))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, handle_message))
 
 
 
