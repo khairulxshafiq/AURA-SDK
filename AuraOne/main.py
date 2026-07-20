@@ -789,17 +789,17 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("📰 Mengambil 10 berita Google News terkini...")
         
         cat_queries = {
-            "gajet": ("gajet teknologi telefon pintar Malaysia 2026", "TOP 10 BERITA GAJET & TEKNOLOGI"),
-            "korporat": ("korporat ekonomi perniagaan saham Malaysia 2026", "TOP 10 BERITA KORPORAT & EKONOMI"),
-            "artis": ("artis hiburan selebriti drama Malaysia 2026", "TOP 10 BERITA ARTIS & HIBURAN"),
-            "sukan": ("sukan bola sepak badminton harimau malaya 2026", "TOP 10 BERITA SUKAN MALAYSIA"),
-            "viral": ("viral panas isu sensasi luahan confession Malaysia 2026", "TOP 10 BERITA VIRAL & CONFESSION"),
-            "nasional": ("isu semasa nasional kerajaan politik Malaysia 2026", "TOP 10 ISU SEMASA NASIONAL")
+            "gajet": ("gajet teknologi telefon pintar Malaysia 2026", "GAJET & TEKNOLOGI"),
+            "korporat": ("korporat ekonomi perniagaan saham Malaysia 2026", "KORPORAT & EKONOMI"),
+            "artis": ("artis hiburan selebriti drama Malaysia 2026", "ARTIS & HIBURAN"),
+            "sukan": ("sukan bola sepak badminton harimau malaya 2026", "SUKAN MALAYSIA"),
+            "viral": ("viral panas isu sensasi luahan confession Malaysia 2026", "VIRAL & CONFESSION"),
+            "nasional": ("isu semasa nasional kerajaan politik Malaysia 2026", "ISU SEMASA NASIONAL")
         }
 
-        q, cat_title = cat_queries.get(cat, (f"{cat} Malaysia 2026", f"BERITA {cat.upper()}"))
+        q, cat_title = cat_queries.get(cat, (f"{cat} Malaysia 2026", cat.upper()))
         articles = fetch_gnews_articles(q, max_items=10)
-        today_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
         if not articles:
             await query.message.reply_text(f"⚠️ Tiada berita terkini dijumpai untuk kategori `{cat}`.", parse_mode="Markdown")
@@ -807,22 +807,21 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
         lines = []
         for idx, a in enumerate(articles, start=1):
-            source_badge = f" ({a['source']})" if a['source'] else ""
+            source_str = f" • *Sumber*: {a['source']}\n" if a['source'] else ""
             lines.append(
-                f"*{idx}. {a['title']}*{source_badge}\n"
-                f"   • {a['desc']}\n"
+                f"*{idx}. {a['title']}*\n"
+                f"{source_str}"
+                f"   • _{a['desc']}_\n"
                 f"   👉 [Baca Sini]({a['link']})"
             )
         
         body = "\n\n".join(lines)
         reply = (
-            f"📰 *{cat_title}*\n"
-            f"───────────────\n"
-            f"📡 *Sumber*: `Google News Malaysia (Live)`\n"
-            f"📆 *Tarikh*: `{today_str}`\n\n"
+            f"📰 *{cat_title} [{today_str}]*\n"
+            f"───────────────\n\n"
             f"{body}\n\n"
             f"───────────────\n"
-            f"✨ *AURA GNews Live Engine*"
+            f"💡 *Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)*:"
         )
         reply_markup = _get_gnews_keyboard()
         await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
@@ -1600,6 +1599,7 @@ def fetch_gnews_articles(query: str = "Malaysia trending viral 2026", max_items:
     import urllib.parse
     import xml.etree.ElementTree as ET
     import re
+    import html
 
     encoded_q = urllib.parse.quote(query)
     url = f"https://news.google.com/rss/search?q={encoded_q}&hl=ms&gl=MY&ceid=MY:ms"
@@ -1626,13 +1626,20 @@ def fetch_gnews_articles(query: str = "Malaysia trending viral 2026", max_items:
                     else:
                         title = raw_title.strip()
                     
-                    clean_desc = re.sub(r"<[^>]+>", "", description).strip()
+                    # Unescape HTML entities (&nbsp;, &amp;, &quot;, etc.) and remove HTML tags
+                    clean_desc = html.unescape(description)
+                    clean_desc = re.sub(r"<[^>]+>", "", clean_desc)
+                    clean_desc = re.sub(r"\s+", " ", clean_desc).strip()
+                    
                     if clean_desc.startswith(title):
                         clean_desc = clean_desc[len(title):].strip()
+                    if source_name and clean_desc.startswith(source_name):
+                        clean_desc = clean_desc[len(source_name):].strip()
+
                     if len(clean_desc) > 130:
                         clean_desc = clean_desc[:127] + "..."
                     if not clean_desc or len(clean_desc) < 5:
-                        clean_desc = f"Berita terkini dilaporkan oleh {source_name or 'Google News'}."
+                        clean_desc = f"Berita terbaharu dilaporkan oleh {source_name or 'Google News'}."
                         
                     articles.append({
                         "title": title,
@@ -1668,19 +1675,19 @@ def _get_gnews_keyboard():
 async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "trending", max_items: int = 6):
     """Send GNews articles with category buttons."""
     cat_queries = {
-        "trending": ("Malaysia trending viral 2026", "TOP 6 BERITA TRENDING & VIRAL MALAYSIA"),
-        "gajet": ("gajet teknologi telefon pintar Malaysia 2026", "TOP 10 BERITA GAJET & TEKNOLOGI"),
-        "korporat": ("korporat ekonomi perniagaan saham Malaysia 2026", "TOP 10 BERITA KORPORAT & EKONOMI"),
-        "artis": ("artis hiburan selebriti drama Malaysia 2026", "TOP 10 BERITA ARTIS & HIBURAN"),
-        "sukan": ("sukan bola sepak badminton harimau malaya 2026", "TOP 10 BERITA SUKAN MALAYSIA"),
-        "viral": ("viral panas isu sensasi luahan confession Malaysia 2026", "TOP 10 BERITA VIRAL & CONFESSION"),
-        "nasional": ("isu semasa nasional kerajaan politik Malaysia 2026", "TOP 10 ISU SEMASA NASIONAL")
+        "trending": ("Malaysia trending viral 2026", "VIRAL & TRENDING"),
+        "gajet": ("gajet teknologi telefon pintar Malaysia 2026", "GAJET & TEKNOLOGI"),
+        "korporat": ("korporat ekonomi perniagaan saham Malaysia 2026", "KORPORAT & EKONOMI"),
+        "artis": ("artis hiburan selebriti drama Malaysia 2026", "ARTIS & HIBURAN"),
+        "sukan": ("sukan bola sepak badminton harimau malaya 2026", "SUKAN MALAYSIA"),
+        "viral": ("viral panas isu sensasi luahan confession Malaysia 2026", "VIRAL & CONFESSION"),
+        "nasional": ("isu semasa nasional kerajaan politik Malaysia 2026", "ISU SEMASA NASIONAL")
     }
 
-    q, cat_title = cat_queries.get(category, (f"{category} Malaysia 2026", f"BERITA {category.upper()}"))
+    q, cat_title = cat_queries.get(category, (f"{category} Malaysia 2026", category.upper()))
     articles = fetch_gnews_articles(q, max_items)
     
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
     if not articles:
         reply_text = f"⚠️ Tiada berita terkini dijumpai untuk kategori `{category}` dari Google News."
@@ -1689,20 +1696,19 @@ async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     lines = []
     for idx, a in enumerate(articles, start=1):
-        source_badge = f" ({a['source']})" if a['source'] else ""
+        source_str = f" • *Sumber*: {a['source']}\n" if a['source'] else ""
         lines.append(
-            f"*{idx}. {a['title']}*{source_badge}\n"
-            f"   • {a['desc']}\n"
+            f"*{idx}. {a['title']}*\n"
+            f"{source_str}"
+            f"   • _{a['desc']}_\n"
             f"   👉 [Baca Sini]({a['link']})"
         )
     
     body = "\n\n".join(lines)
     
     reply = (
-        f"🔥 *{cat_title}*\n"
-        f"───────────────\n"
-        f"📡 *Sumber*: `Google News Malaysia (Live)`\n"
-        f"📆 *Tarikh*: `{today_str}`\n\n"
+        f"🔥 *{cat_title} [{today_str}]*\n"
+        f"───────────────\n\n"
         f"{body}\n\n"
         f"───────────────\n"
         f"💡 *Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)*:"
@@ -2117,10 +2123,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         try:
             logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
+            import asyncio
             async with Agent(gemini_config) as agent:
                 chat_input = [media_part, user_message] if media_part else user_message
-                response = await agent.chat(chat_input)
-                response_text = await response.text()
+                response = await asyncio.wait_for(agent.chat(chat_input), timeout=25.0)
+                response_text = await asyncio.wait_for(response.text(), timeout=10.0)
 
                 if not conv_id:
                     new_id = agent.conversation_id
@@ -2129,16 +2136,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
             gemini_success = True
             break
-        except Exception as gemini_err:
-            if _is_rate_limit_error(gemini_err):
-                logger.warning(f"[Gemini] Rate limit hit for key index {current_key_idx}. Putting on 5-minute persistent cooldown and rotating...")
-                memory.update_preference(f"cooldown:{active_key}", str(time.time() + 300.0))
-                current_key_idx = (current_key_idx + 1) % num_keys
-                continue
-            else:
-                logger.error(f"[Gemini] Error for user {user_id}: {gemini_err}", exc_info=True)
-                await _send_telegram_msg(update, _send_safe_message(f"⚠️ Ralat berlaku: {str(gemini_err)}"))
-                return
+        except (asyncio.TimeoutError, Exception) as gemini_err:
+            logger.warning(f"[Gemini] Key index {current_key_idx} error/timeout: {gemini_err}. Rotating to next key...")
+            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 60.0))
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
 
     if gemini_success:
         response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
@@ -2174,10 +2176,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     or_config = _build_openrouter_config(conv_id)
 
     try:
+        import asyncio
         async with Agent(or_config) as agent:
             chat_input = [media_part, user_message] if media_part else user_message
-            response = await agent.chat(chat_input)
-            response_text = await response.text()
+            response = await asyncio.wait_for(agent.chat(chat_input), timeout=25.0)
+            response_text = await asyncio.wait_for(response.text(), timeout=10.0)
 
             if not conv_id:
                 new_id = agent.conversation_id
