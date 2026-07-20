@@ -848,8 +848,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 if not address:
                     return "Malaysia"
                 parts = [p.strip() for p in address.split(",")]
-                
-                # Check for major Malaysian cities/states
                 for part in parts:
                     p_lower = part.lower()
                     if any(c in p_lower for c in [
@@ -860,8 +858,6 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                         "alor setar", "kangar", "kota kinabalu", "kuching", "selangor"
                     ]):
                         return part
-
-                # Fallback clean parts
                 cleaned = [p for p in parts if not p.isdigit() and p.lower() not in ["malaysia", "singapore", "thailand"]]
                 if len(cleaned) >= 2:
                     return f"{cleaned[-2]}, {cleaned[-1]}"
@@ -870,39 +866,61 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 return address
 
             city_area = _extract_city_area(loc["address"])
-            await query.message.reply_text(f"🔍 Mengumpul senarai event & aktiviti terkini di kawasan *{city_area}*...", parse_mode="Markdown")
+            await query.message.reply_text(f"🔍 Mengumpul & menyusun senarai event mengikut tarikh terkini di *{city_area}*...", parse_mode="Markdown")
             
             from tools import search_web
             search_query = f"event acara pesta aktiviti terkini {city_area} 2026"
             search_res = search_web(search_query)
             
             formatted_results = ""
-            if isinstance(search_res, dict) and search_res.get("status") == "success":
-                results = search_res.get("results", [])
-                if results:
-                    items = []
-                    for idx, item in enumerate(results[:5], start=1):
-                        title = item.get("title", "Acara Berdekatan")
-                        snippet = item.get("snippet", "")
-                        link = item.get("link", "")
-                        link_str = f"\n👉 [Maklumat Lanjut & Tiket]({link})" if link else ""
-                        items.append(f"*{idx}. {title}*\n{snippet}{link_str}")
-                    formatted_results = "\n\n".join(items)
+            today_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
             
-            if not formatted_results:
+            # Use Gemini to parse & sort events chronologically by date
+            try:
+                prompt = (
+                    f"Hari ini ialah tarikh sistem: {today_str}.\n"
+                    f"Berikut ialah hasil carian web terkini untuk acara & aktiviti di kawasan {city_area}:\n\n"
+                    f"{search_res}\n\n"
+                    f"ARAHAN:\n"
+                    f"1. Ekstrak dan susun senarai acara/event mengikut URUTAN TARIKH KRONOLOGI (daripada tarikh terdekat dengan hari ini ke hadapan).\n"
+                    f"2. Untuk setiap acara, WAJIB tulis tarikh & masa yang jelas di bahagian atas:\n"
+                    f"   - 📅 **Tarikh**: <Tarikh & Hari spesifik>\n"
+                    f"   - 📍 **Lokasi**: <Lokasi spesifik>\n"
+                    f"   - 📝 **Penerangan**: <Penerangan ringkas & menarik>\n"
+                    f"   - 🔗 **Pautan**: <Link jika ada di carian>\n"
+                    f"3. Berikan 3-5 acara terkini sahaja dalam format markdown yang kemas.\n"
+                    f"4. Sila pulangkan jawapan terus dalam Bahasa Melayu santai tanpa prolog panjang."
+                )
+                from google import genai
+                active_key = GEMINI_KEYS[current_key_idx]
+                client = genai.Client(api_key=active_key)
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                )
+                if response and response.text:
+                    formatted_results = response.text.strip()
+            except Exception as e:
+                logger.warning(f"Error date sorting events with Gemini: {e}")
+
+            if not formatted_results or "error" in formatted_results.lower():
                 formatted_results = (
                     f"• *Aktiviti & Tempat Menarik Popular di {city_area}*:\n\n"
-                    f"1. 🏃‍♂️ *IMMI SELRUN 2026* — Larian Imigresen di Kompleks PKNS Shah Alam.\n"
-                    f"2. 🏞️ *Taman Tasik Shah Alam* — Lepak keluarga, kayak & larian riadah.\n"
-                    f"3. 🎨 *Laman Seni 7 Shah Alam* — Mural, street art & spot bergambar.\n"
-                    f"4. 🎡 *I-City Shah Alam* — Lampu LED, Snowwalk & Theme Park malam.\n"
-                    f"5. 🛍️ *Kompleks PKNS & SACC Mall* — Bazaar tempatan & shopping santai."
+                    f"1. 📅 **Tarikh**: Sepanjang Tahun 2026\n"
+                    f"   🏃‍♂️ *IMMI SELRUN 2026* — Larian Imigresen di Kompleks PKNS Shah Alam.\n\n"
+                    f"2. 📅 **Tarikh**: Setiap Hujung Minggu\n"
+                    f"   🏞️ *Taman Tasik Shah Alam* — Lepak keluarga, kayak & larian riadah.\n\n"
+                    f"3. 📅 **Tarikh**: Dibuka Harian (10am - 10pm)\n"
+                    f"   🎨 *Laman Seni 7 Shah Alam* — Mural, street art & spot bergambar.\n\n"
+                    f"4. 📅 **Tarikh**: Setiap Malam (6pm - 12am)\n"
+                    f"   🎡 *I-City Shah Alam* — Lampu LED, Snowwalk & Theme Park malam."
                 )
 
             reply = (
-                f"🎉 *ACARA & AKTIVITI BERDEKATAN ({city_area.upper()})*\n"
+                f"🎉 *ACARA & AKTIVITI TERKINI ({city_area.upper()})*\n"
                 f"───────────────\n\n"
-                f"📍 *Kawasan*: `{city_area}`\n\n"
+                f"📍 *Kawasan*: `{city_area}`\n"
+                f"📆 *Dikemaskini*: `{today_str}`\n\n"
                 f"{formatted_results}\n\n"
                 f"───────────────\n"
                 f"✨ *AURA sedia bantu Matrol dengan perancangan aktiviti harian!*"
