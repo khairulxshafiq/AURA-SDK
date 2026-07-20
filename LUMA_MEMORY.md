@@ -124,7 +124,8 @@
   * Converted nearby search buttons (`[🍽️ Makan Best]`, `[☕ Cafe Lepak]`, `[⛽ Stesen Minyak]`, `[🛠️ Hardware]`) and saved place buttons (`[🏠 Home]`, `[🏢 Work]`) into direct Google Maps URLs for instant opening in mobile app/browser without bot latency.
   * Replaced Weather button with `[🎉 Events]` button. Integrated AI Gemini parsing to extract live local events/activities for any Malaysian city/state (KL, Selangor, N. Sembilan, etc.) and format them chronologically by date in an ultra-compact 8-item clean mobile layout.
   * Integrated **GNews Live Engine** (`fetch_gnews_articles`). Automatically fetches Top 6 live trending Malaysia news upon asking ("apa berita menarik", "berita viral", "/news") with inline category buttons (`[💻 Gajet & Tech]`, `[💼 Korporat]`, `[🎭 Artis & Hiburan]`, `[⚽ Sukan]`, `[🔥 Viral & Confession]`, `[⚡ Isu Semasa]`), returning Top 10 articles per category formatted with bold titles, snippets, and `[👉 Baca Sini]` links.
-  * Fixed callback handler guard ordering in `handle_callback_query` so location and GNews callbacks execute independently without requiring active content drafts.
+  * Completed full codebase audit and syntax validation (`main.py`, `memory.py`, `tools.py`). Verified clean compilation, zero dead code regressions, and active systemd daemon status.
+
 
 
 
