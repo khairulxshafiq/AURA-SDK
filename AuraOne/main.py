@@ -969,6 +969,47 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         )
         await _send_telegram_msg(update, reply, parse_mode="Markdown")
 
+    elif data.startswith("loc_action:"):
+        act = data.split(":")[1]
+        import memory
+        loc = memory.get_user_location(user_id)
+        if not loc:
+            await query.answer("⚠️ Tiada lokasi tersimpan. Sila hantar lokasi (location pin) anda dahulu!", show_alert=True)
+            return
+
+        if act == "set_home":
+            memory.save_user_place(user_id, "home", loc["latitude"], loc["longitude"], loc["address"])
+            await query.answer("✅ Lokasi RUMAH berjaya disimpan!", show_alert=True)
+            reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
+            try:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+            except Exception:
+                pass
+            await query.message.reply_text(f"🏠 *LOKASI RUMAH BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
+
+        elif act == "set_hq":
+            memory.save_user_place(user_id, "hq", loc["latitude"], loc["longitude"], loc["address"])
+            await query.answer("✅ Lokasi HQ Sakluma berjaya disimpan!", show_alert=True)
+            reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
+            try:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+            except Exception:
+                pass
+            await query.message.reply_text(f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
+
+        elif act == "weather_full":
+            await query.answer("⏳ Mengambil ramalan cuaca 7 hari...")
+            weather_7days = await _get_extended_weather_forecast(loc["latitude"], loc["longitude"])
+            reply = (
+                f"🌤️ *RAMALAN CUACA 7 HARI TERKINI*\n"
+                f"───────────────\n\n"
+                f"📍 *Lokasi*: `{loc['address']}`\n\n"
+                f"{weather_7days}\n\n"
+                f"───────────────\n"
+                f"✨ *AURA sedia bantu Matrol dengan perancangan mingguan!*"
+            )
+            await _send_telegram_msg(update, reply, parse_mode="Markdown")
+
 
 
 async def _process_response_draft(user_id: int, chat_id: int, response_text: str, context, update) -> str:
@@ -1461,12 +1502,56 @@ async def _get_weather_forecast(lat: float, lon: float) -> str:
     return "• *Cuaca*: Tidak dapat diproses"
 
 
+async def _get_extended_weather_forecast(lat: float, lon: float) -> str:
+    """Fetch 7-day daily weather forecast from Open-Meteo API."""
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}"
+            f"&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_sum"
+            f"&timezone=Asia%2FKuala_Lumpur&forecast_days=7"
+        )
+        async with httpx.AsyncClient(timeout=8) as client:
+            res = await client.get(url)
+            if res.status_code == 200:
+                data = res.json()
+                daily = data.get("daily", {})
+                times = daily.get("time", [])
+                max_temps = daily.get("temperature_2m_max", [])
+                min_temps = daily.get("temperature_2m_min", [])
+                codes = daily.get("weathercode", [])
+                precip = daily.get("precipitation_sum", [])
+
+                def get_desc(c):
+                    if c == 0: return "☀️ Cerah"
+                    elif c in [1, 2, 3]: return "⛅ Berawan"
+                    elif c in [45, 48]: return "🌫️ Kabus"
+                    elif c in [51, 53, 55, 61, 63, 65, 80, 81, 82]: return "🌧️ Hujan"
+                    elif c in [95, 96, 99]: return "⛈️ Ribut"
+                    return "🌤️ Redup"
+
+                lines = []
+                for i in range(len(times)):
+                    date_str = times[i]
+                    lines.append(f"• `{date_str}`: {get_desc(codes[i])} | `{min_temps[i]}°C - {max_temps[i]}°C` (Hujan: `{precip[i]}mm`)")
+                
+                return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Extended weather forecast error: {e}")
+    return "• *Cuaca 7 Hari*: Tidak dapat diproses"
+
+
 def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     import memory
     places = memory.get_user_places(user_id)
     
     keyboard = [
+        [
+            InlineKeyboardButton("🏠 Set Rumah", callback_data="loc_action:set_home"),
+            InlineKeyboardButton("🏢 Set HQ", callback_data="loc_action:set_hq"),
+            InlineKeyboardButton("🌤️ Cuaca 7 Hari", callback_data="loc_action:weather_full")
+        ],
         [
             InlineKeyboardButton("🍽️ Makan Best", callback_data="loc_search:makan"),
             InlineKeyboardButton("☕ Cafe Lepak", callback_data="loc_search:cafe"),
@@ -1482,12 +1567,12 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
         h_lat = places["home"]["lat"]
         h_lon = places["home"]["lon"]
         nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={h_lat},{h_lon}"
-        nav_row.append(InlineKeyboardButton("🏠 Navigasi Ke Rumah", url=nav_url))
+        nav_row.append(InlineKeyboardButton("🚗 Ke Rumah", url=nav_url))
     if "hq" in places:
         hq_lat = places["hq"]["lat"]
         hq_lon = places["hq"]["lon"]
         nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={hq_lat},{hq_lon}"
-        nav_row.append(InlineKeyboardButton("🏢 Navigasi Ke HQ", url=nav_url))
+        nav_row.append(InlineKeyboardButton("🏎️ Ke HQ", url=nav_url))
         
     if nav_row:
         keyboard.append(nav_row)
