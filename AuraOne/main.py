@@ -1716,7 +1716,7 @@ def _get_viral_confessions_keyboard(offset: int = 0):
 
 
 async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: int = 0):
-    """Fetch 6 sensational viral/confession articles from IIUMC, Reddit Bolehland/Malaysia, and forums with pagination."""
+    """Fetch 6 sensational viral/confession articles from IIUMC, Reddit Bolehland/Malaysia, and Lowyat forum with pagination."""
     queries = [
         "IIUM Confessions luahan rumah tangga curang skandal 2026",
         "Reddit Bolehland Malaysia confession luahan isteri suami curang 2026",
@@ -1726,7 +1726,7 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
     
     q = queries[(offset // 6) % len(queries)]
     from tools import search_web
-    search_res = search_web(f"{q} site:iiumc.com OR site:reddit.com OR site:forum.lowyat.net OR site:facebook.com")
+    search_res = search_web(f"{q} site:iiumc.com OR site:reddit.com OR site:forum.lowyat.net")
     
     results = search_res.get("results", []) if isinstance(search_res, dict) else []
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -1737,9 +1737,13 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
         articles = results_gnews
     else:
         articles = []
-        for item in results[:6]:
-            title = item.get("title", "Luahan Sensasi").strip()
+        for item in results:
             link = item.get("link", "").strip()
+            # Explicitly exclude Facebook URLs
+            if "facebook.com" in link.lower() or "fb.com" in link.lower():
+                continue
+                
+            title = item.get("title", "Luahan Sensasi").strip()
             snippet = item.get("snippet", "").strip()
             snippet = re.sub(r"\s+", " ", snippet)
             if len(snippet) > 130:
@@ -1754,8 +1758,6 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
                 source_name = "Reddit Malaysia"
             elif "lowyat" in link.lower():
                 source_name = "Lowyat Forum"
-            elif "facebook.com" in link.lower():
-                source_name = "FB Luahan Community"
 
             articles.append({
                 "title": title,
@@ -1763,6 +1765,8 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
                 "link": link,
                 "desc": snippet
             })
+            if len(articles) >= 6:
+                break
 
     lines = []
     for idx, a in enumerate(articles, start=offset + 1):
