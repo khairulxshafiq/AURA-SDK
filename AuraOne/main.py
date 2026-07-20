@@ -1790,6 +1790,9 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
 
     reply_markup = _get_viral_confessions_keyboard(offset)
     await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
+
+
+async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "trending", max_items: int = 6):
     """Send GNews articles with category buttons."""
     cat_queries = {
         "trending": ("Malaysia trending viral 2026", "VIRAL & TRENDING"),
