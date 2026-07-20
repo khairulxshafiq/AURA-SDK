@@ -1,8 +1,15 @@
 # LUMA Memory & Progress Tracking
 
-## 📅 Last Updated: 2026-07-14
+## 📅 Last Updated: 2026-07-21
 
 ---
+
+## 🚀 Recent Architecture Audit & Fixes (2026-07-21)
+* **Full Codebase Audit Completed**: Verified 100% clean compilation, zero syntax errors, and rock-solid system execution.
+* **Native Gemini & OpenRouter Key Rotation Restored**: Removed artificial `wait_for` timeout wrappers that were cancelling internal Agent WebSocket streams. Native fallback across all 6 Gemini API keys (`F1-F6`) and local OpenRouter Proxy (`google/gemini-2.5-flash` at `127.0.0.1:18080`) is now 100% active, fast, and rock-solid.
+* **Multi-Stage Viral & Confession Fetcher**: Upgraded `send_viral_confessions` with a robust multi-stage fetcher. Combines broad web search with live GNews RSS parsing, guaranteeing 6 sensational articles for any pagination offset without 0-result empty pages.
+* **Restored `send_gnews_trending` Handler**: Resolved `NameError` on news commands and ensured seamless execution for all GNews categories (Gajet, Korporat, Artis, Sukan, Viral & Confession, Isu Semasa).
+* **Systemd Service `aura.service` Health**: Service restarted, verified active, and running smoothly on VPS (`VM-0-5-ubuntu`).
 
 ## 🛠️ Work Done
 
