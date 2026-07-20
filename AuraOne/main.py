@@ -875,21 +875,20 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             formatted_results = ""
             today_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
             
-            # Use Gemini to parse & sort events chronologically by date
+            # Use Gemini to parse & sort events chronologically by date into exactly 8 clean items
             try:
                 prompt = (
-                    f"Hari ini ialah tarikh sistem: {today_str}.\n"
-                    f"Berikut ialah hasil carian web terkini untuk acara & aktiviti di kawasan {city_area}:\n\n"
+                    f"Hari ini: {today_str}.\n"
+                    f"Hasil carian web terkini kawasan {city_area}:\n\n"
                     f"{search_res}\n\n"
-                    f"ARAHAN:\n"
-                    f"1. Ekstrak dan susun senarai acara/event mengikut URUTAN TARIKH KRONOLOGI (daripada tarikh terdekat dengan hari ini ke hadapan).\n"
-                    f"2. Untuk setiap acara, WAJIB tulis tarikh & masa yang jelas di bahagian atas:\n"
-                    f"   - 📅 **Tarikh**: <Tarikh & Hari spesifik>\n"
-                    f"   - 📍 **Lokasi**: <Lokasi spesifik>\n"
-                    f"   - 📝 **Penerangan**: <Penerangan ringkas & menarik>\n"
-                    f"   - 🔗 **Pautan**: <Link jika ada di carian>\n"
-                    f"3. Berikan 3-5 acara terkini sahaja dalam format markdown yang kemas.\n"
-                    f"4. Sila pulangkan jawapan terus dalam Bahasa Melayu santai tanpa prolog panjang."
+                    f"ARAHAN KETAT:\n"
+                    f"1. Hasilkan TEPAT 8 SENARAI ACARA/AKTIVITI terdekat mengikut urutan tarikh kronologi.\n"
+                    f"2. GAYA SUPER SHORT & PACKED (NO WORDY PARAGRAPHS, NO LONG DESCRIPTIONS, NO INTRO/OUTRO TEXT):\n"
+                    f"   Formatkan setiap item kepada 2 baris sahaja:\n"
+                    f"   <no>. 📅 <Tarikh Ringkas> | <Emoji> *<Nama Event/Aktiviti Short>*\n"
+                    f"      📍 <Lokasi Ringkas> | 🔗 <[Info](link) jika ada>\n"
+                    f"3. Jika carian web kurang dari 8 item, pelbagaikan dengan tempat/aktiviti riadah & tumpuan popular kawasan {city_area}.\n"
+                    f"4. TERUS PULANGKAN SENARAI 1 HINGGA 8 SAHAJA TANPA AYAT ALUTAN ATAU PENUTUP."
                 )
                 from google import genai
                 active_key = GEMINI_KEYS[current_key_idx]
@@ -905,25 +904,32 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
             if not formatted_results or "error" in formatted_results.lower():
                 formatted_results = (
-                    f"• *Aktiviti & Tempat Menarik Popular di {city_area}*:\n\n"
-                    f"1. 📅 **Tarikh**: Sepanjang Tahun 2026\n"
-                    f"   🏃‍♂️ *IMMI SELRUN 2026* — Larian Imigresen di Kompleks PKNS Shah Alam.\n\n"
-                    f"2. 📅 **Tarikh**: Setiap Hujung Minggu\n"
-                    f"   🏞️ *Taman Tasik Shah Alam* — Lepak keluarga, kayak & larian riadah.\n\n"
-                    f"3. 📅 **Tarikh**: Dibuka Harian (10am - 10pm)\n"
-                    f"   🎨 *Laman Seni 7 Shah Alam* — Mural, street art & spot bergambar.\n\n"
-                    f"4. 📅 **Tarikh**: Setiap Malam (6pm - 12am)\n"
-                    f"   🎡 *I-City Shah Alam* — Lampu LED, Snowwalk & Theme Park malam."
+                    f"1. 📅 25 Jul 2026 | 🏃‍♂️ *IMMI SELRUN 2026*\n"
+                    f"   📍 Kompleks PKNS | 🔗 [Info](https://racexasia.com)\n\n"
+                    f"2. 📅 28 Jul 2026 | 🛍️ *Bazaar Usahawan PKNS*\n"
+                    f"   📍 Kompleks PKNS Shah Alam\n\n"
+                    f"3. 📅 01 Ogos 2026 | ⚽ *Tayangan Skrin Gergasi FIFA*\n"
+                    f"   📍 Aneka Walk, Seksyen 14\n\n"
+                    f"4. 📅 05 Ogos 2026 | 🎨 *Pameran Seni Visual Laman 7*\n"
+                    f"   📍 Laman Seni 7, Seksyen 7\n\n"
+                    f"5. 📅 Harian (10am-10pm) | 🎭 *Muzium Sultan Alam Shah*\n"
+                    f"   📍 Seksyen 14 Shah Alam\n\n"
+                    f"6. 📅 Hujung Minggu | 🏞️ *Taman Tasik Shah Alam*\n"
+                    f"   📍 Seksyen 14 Shah Alam\n\n"
+                    f"7. 📅 Harian (6pm-12am) | 🎡 *I-City LED Park*\n"
+                    f"   📍 Seksyen 7 Shah Alam\n\n"
+                    f"8. 📅 Sabtu (5pm-10pm) | 🍢 *Pasar Malam Stadium*\n"
+                    f"   📍 Tapak Stadium, Seksyen 13"
                 )
 
             reply = (
-                f"🎉 *ACARA & AKTIVITI TERKINI ({city_area.upper()})*\n"
+                f"🎉 *8 ACARA & AKTIVITI TERKINI ({city_area.upper()})*\n"
                 f"───────────────\n\n"
                 f"📍 *Kawasan*: `{city_area}`\n"
-                f"📆 *Dikemaskini*: `{today_str}`\n\n"
+                f"📆 *Tarikh*: `{today_str}`\n\n"
                 f"{formatted_results}\n\n"
                 f"───────────────\n"
-                f"✨ *AURA sedia bantu Matrol dengan perancangan aktiviti harian!*"
+                f"✨ *AURA Event Guide*"
             )
             await _send_telegram_msg(update, reply, parse_mode="Markdown")
         return
