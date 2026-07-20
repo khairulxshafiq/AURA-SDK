@@ -1543,8 +1543,6 @@ async def _get_extended_weather_forecast(lat: float, lon: float) -> str:
 
 def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float):
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-    import memory
-    places = memory.get_user_places(user_id)
     
     keyboard = [
         [
@@ -1561,21 +1559,6 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
             InlineKeyboardButton("🛠️ Hardware", callback_data="loc_search:hardware")
         ]
     ]
-    
-    nav_row = []
-    if "home" in places:
-        h_lat = places["home"]["lat"]
-        h_lon = places["home"]["lon"]
-        nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={h_lat},{h_lon}"
-        nav_row.append(InlineKeyboardButton("🚗 Nav Home", url=nav_url))
-    if "hq" in places:
-        hq_lat = places["hq"]["lat"]
-        hq_lon = places["hq"]["lon"]
-        nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={hq_lat},{hq_lon}"
-        nav_row.append(InlineKeyboardButton("🏎️ Nav Work", url=nav_url))
-        
-    if nav_row:
-        keyboard.append(nav_row)
         
     return InlineKeyboardMarkup(keyboard)
 
