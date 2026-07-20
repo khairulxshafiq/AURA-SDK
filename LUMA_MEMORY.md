@@ -117,6 +117,8 @@
   * Implemented Gemini API key cooldown caching (`COOLDOWN_KEYS`) backed by persistent SQLite storage to avoid sequential initialization latency on rate-limited keys, reducing fallback response time even after service restarts.
   * Patched SDK virtual environment file `litert_connection.py` to add `MODEL_TYPE_IMAGE` capability support to `LocalOpenAIConnectionStrategy`, and implemented local temp file photo caching with automated OpenRouter proxy payload rewriting to format and inject base64 `image_url` objects directly into fallback API calls. Cleared rate-limited `GEMINI_API_KEY` environment leakage before starting OpenRouter Agent sessions to prevent harness process validation errors.
   * Implemented dynamic platform pre-selection: If the user mentions platforms (like `"fb"`, `"threads"`, `"x"`, etc.) in their text/caption prompt, AURA automatically checks them in the keyboard menu. Locked the drafting flow to always pass through the platform and style (persona) selection keyboard loop, ensuring consistency with the article scraping flow.
+  * Redesigned Telegram location response format into a premium structured card featuring monospace codeblocks for address & GPS coordinates, direct Google Maps link integration, and quick-prompt suggestions. Upgraded `_send_telegram_msg` parser to support HTML codeblock conversion.
+
 
 
 
