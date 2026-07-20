@@ -802,7 +802,19 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     import memory
     import json
 
-    # ── GNews Category Callback Handler (No content draft required) ───────────
+    # ── GNews & Viral Confessions Callback Handlers (No content draft required) ─────
+    if data.startswith("viral_menu:"):
+        offset_str = data.split(":")[1]
+        offset = int(offset_str) if offset_str.isdigit() else 0
+        await query.answer("🔥 Mengambil 6 cerita sensasi & confession terkini...")
+        await send_viral_confessions(update, context, offset=offset)
+        return
+
+    if data == "gnews_back":
+        await query.answer("◀️ Kembali ke menu utama Berita Trending...")
+        await send_gnews_trending(update, context, category="trending", max_items=6)
+        return
+
     if data.startswith("gnews_cat:"):
         cat = data.split(":")[1]
         await query.answer("📰 Mengambil 10 berita Google News terkini...")
@@ -1684,14 +1696,96 @@ def _get_gnews_keyboard():
             InlineKeyboardButton("⚽ Sukan", callback_data="gnews_cat:sukan")
         ],
         [
-            InlineKeyboardButton("🔥 Viral & Confession", callback_data="gnews_cat:viral"),
+            InlineKeyboardButton("🔥 Viral & Confession", callback_data="viral_menu:0"),
             InlineKeyboardButton("⚡ Isu Semasa", callback_data="gnews_cat:nasional")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 
-async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "trending", max_items: int = 6):
+def _get_viral_confessions_keyboard(offset: int = 0):
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    next_offset = offset + 6
+    keyboard = [
+        [
+            InlineKeyboardButton("🔥 More Confessions", callback_data=f"viral_menu:{next_offset}"),
+            InlineKeyboardButton("◀️ Back Ke Menu News", callback_data="gnews_back")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: int = 0):
+    """Fetch 6 sensational viral/confession articles from IIUMC, Reddit Bolehland/Malaysia, and forums with pagination."""
+    queries = [
+        "IIUM Confessions luahan rumah tangga curang skandal 2026",
+        "Reddit Bolehland Malaysia confession luahan isteri suami curang 2026",
+        "Lowyat Kopitiam luahan confession rumah tangga viral 2026",
+        "Confession luahan rahsia perkahwinan sensasi Malaysia 2026"
+    ]
+    
+    q = queries[(offset // 6) % len(queries)]
+    from tools import search_web
+    search_res = search_web(f"{q} site:iiumc.com OR site:reddit.com OR site:forum.lowyat.net OR site:facebook.com")
+    
+    results = search_res.get("results", []) if isinstance(search_res, dict) else []
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+
+    if not results:
+        # Fallback to GNews search if specific forum search yields zero
+        results_gnews = fetch_gnews_articles("confession luahan rumah tangga viral Malaysia 2026", max_items=6)
+        articles = results_gnews
+    else:
+        articles = []
+        for item in results[:6]:
+            title = item.get("title", "Luahan Sensasi").strip()
+            link = item.get("link", "").strip()
+            snippet = item.get("snippet", "").strip()
+            snippet = re.sub(r"\s+", " ", snippet)
+            if len(snippet) > 130:
+                snippet = snippet[:127] + "..."
+            if not snippet:
+                snippet = "Kisah luahan sensasi masyarakat & netizen Malaysia."
+                
+            source_name = "Forum / Portal Luahan"
+            if "iiumc" in link.lower():
+                source_name = "IIUM Confessions"
+            elif "reddit.com" in link.lower():
+                source_name = "Reddit Malaysia"
+            elif "lowyat" in link.lower():
+                source_name = "Lowyat Forum"
+            elif "facebook.com" in link.lower():
+                source_name = "FB Luahan Community"
+
+            articles.append({
+                "title": title,
+                "source": source_name,
+                "link": link,
+                "desc": snippet
+            })
+
+    lines = []
+    for idx, a in enumerate(articles, start=offset + 1):
+        source_str = f" • *Sumber*: {a['source']}\n" if a.get('source') else ""
+        lines.append(
+            f"*{idx}. {a['title']}*\n"
+            f"{source_str}"
+            f"   • _{a['desc']}_\n"
+            f"   👉 [Baca Sini]({a['link']})"
+        )
+
+    body = "\n\n".join(lines)
+    reply = (
+        f"🔥 *VIRAL & CONFESSION SENSASI [{today_str}]*\n"
+        f"───────────────\n"
+        f"📌 *Koleksi*: `Reddit (r/Bolehland, r/malaysia), IIUMC & Lowyat Forum`\n\n"
+        f"{body}\n\n"
+        f"───────────────\n"
+        f"💡 *Tekan [More Confessions] untuk 6 cerita seterusnya, atau [Back] untuk ke menu utama:* "
+    )
+
+    reply_markup = _get_viral_confessions_keyboard(offset)
+    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
     """Send GNews articles with category buttons."""
     cat_queries = {
         "trending": ("Malaysia trending viral 2026", "VIRAL & TRENDING"),
