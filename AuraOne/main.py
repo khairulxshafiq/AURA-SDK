@@ -2243,8 +2243,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             import asyncio
             async with Agent(gemini_config) as agent:
                 chat_input = [media_part, user_message] if media_part else user_message
-                response = await asyncio.wait_for(agent.chat(chat_input), timeout=25.0)
-                response_text = await asyncio.wait_for(response.text(), timeout=10.0)
+                
+                async def _exec_gemini():
+                    resp = await agent.chat(chat_input)
+                    return await resp.text()
+
+                response_text = await asyncio.wait_for(_exec_gemini(), timeout=50.0)
 
                 if not conv_id:
                     new_id = agent.conversation_id
@@ -2255,7 +2259,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
         except (asyncio.TimeoutError, Exception) as gemini_err:
             logger.warning(f"[Gemini] Key index {current_key_idx} error/timeout: {gemini_err}. Rotating to next key...")
-            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 60.0))
+            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 30.0))
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
 
@@ -2296,8 +2300,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         import asyncio
         async with Agent(or_config) as agent:
             chat_input = [media_part, user_message] if media_part else user_message
-            response = await asyncio.wait_for(agent.chat(chat_input), timeout=25.0)
-            response_text = await asyncio.wait_for(response.text(), timeout=10.0)
+            
+            async def _exec_or():
+                resp = await agent.chat(chat_input)
+                return await resp.text()
+
+            response_text = await asyncio.wait_for(_exec_or(), timeout=50.0)
 
             if not conv_id:
                 new_id = agent.conversation_id
