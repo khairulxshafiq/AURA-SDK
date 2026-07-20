@@ -1780,6 +1780,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await confirm_command(update, context)
             return
 
+        if any(k in msg_clean for k in ["set rumah", "setkan rumah", "set koordinat", "set cordinat", "sebagai rumah"]):
+            if "hq" not in msg_clean and "office" not in msg_clean:
+                import memory
+                loc = memory.get_user_location(user_id)
+                if loc:
+                    memory.save_user_place(user_id, "home", loc["latitude"], loc["longitude"], loc["address"])
+                    reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
+                    reply = (
+                        f"🏠 *LOKASI RUMAH BERJAYA DISIMPAN!*\n"
+                        f"───────────────\n\n"
+                        f"• *Alamat*: `{loc['address']}`\n"
+                        f"• *Koordinat*: `{loc['latitude']}, {loc['longitude']}`\n\n"
+                        f"Setiap kali boss hantar lokasi baru, butang *[🚗 Ke Rumah]* akan dipaparkan secara automatik di Telegram!"
+                    )
+                    await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=reply_markup)
+                    return
+
+        if any(k in msg_clean for k in ["set hq", "setkan hq", "set office", "sebagai hq"]):
+            import memory
+            loc = memory.get_user_location(user_id)
+            if loc:
+                memory.save_user_place(user_id, "hq", loc["latitude"], loc["longitude"], loc["address"])
+                reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
+                reply = (
+                    f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n"
+                    f"───────────────\n\n"
+                    f"• *Alamat*: `{loc['address']}`\n"
+                    f"• *Koordinat*: `{loc['latitude']}, {loc['longitude']}`\n\n"
+                    f"Setiap kali boss hantar lokasi baru, butang *[🏎️ Ke HQ]* akan dipaparkan secara automatik di Telegram!"
+                )
+                await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=reply_markup)
+                return
+
         import memory
         loc = memory.get_user_location(user_id)
         if loc:
