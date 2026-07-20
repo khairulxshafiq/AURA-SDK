@@ -783,6 +783,51 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     import memory
     import json
 
+    # ── GNews Category Callback Handler (No content draft required) ───────────
+    if data.startswith("gnews_cat:"):
+        cat = data.split(":")[1]
+        await query.answer("📰 Mengambil 10 berita Google News terkini...")
+        
+        cat_queries = {
+            "gajet": ("gajet teknologi telefon pintar Malaysia 2026", "TOP 10 BERITA GAJET & TEKNOLOGI"),
+            "korporat": ("korporat ekonomi perniagaan saham Malaysia 2026", "TOP 10 BERITA KORPORAT & EKONOMI"),
+            "artis": ("artis hiburan selebriti drama Malaysia 2026", "TOP 10 BERITA ARTIS & HIBURAN"),
+            "sukan": ("sukan bola sepak badminton harimau malaya 2026", "TOP 10 BERITA SUKAN MALAYSIA"),
+            "viral": ("viral panas isu sensasi luahan confession Malaysia 2026", "TOP 10 BERITA VIRAL & CONFESSION"),
+            "nasional": ("isu semasa nasional kerajaan politik Malaysia 2026", "TOP 10 ISU SEMASA NASIONAL")
+        }
+
+        q, cat_title = cat_queries.get(cat, (f"{cat} Malaysia 2026", f"BERITA {cat.upper()}"))
+        articles = fetch_gnews_articles(q, max_items=10)
+        today_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
+
+        if not articles:
+            await query.message.reply_text(f"⚠️ Tiada berita terkini dijumpai untuk kategori `{cat}`.", parse_mode="Markdown")
+            return
+
+        lines = []
+        for idx, a in enumerate(articles, start=1):
+            source_badge = f" ({a['source']})" if a['source'] else ""
+            lines.append(
+                f"*{idx}. {a['title']}*{source_badge}\n"
+                f"   • {a['desc']}\n"
+                f"   👉 [Baca Sini]({a['link']})"
+            )
+        
+        body = "\n\n".join(lines)
+        reply = (
+            f"📰 *{cat_title}*\n"
+            f"───────────────\n"
+            f"📡 *Sumber*: `Google News Malaysia (Live)`\n"
+            f"📆 *Tarikh*: `{today_str}`\n\n"
+            f"{body}\n\n"
+            f"───────────────\n"
+            f"✨ *AURA GNews Live Engine*"
+        )
+        reply_markup = _get_gnews_keyboard()
+        await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
+        return
+
     # ── Location Callback Handlers (No content draft required) ──────────────
     if data.startswith("loc_search:"):
         category = data.split(":")[1]
@@ -1550,6 +1595,123 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+def fetch_gnews_articles(query: str = "Malaysia trending viral 2026", max_items: int = 6) -> list:
+    """Fetch live news from Google News Malaysia RSS feed."""
+    import urllib.parse
+    import xml.etree.ElementTree as ET
+    import re
+
+    encoded_q = urllib.parse.quote(query)
+    url = f"https://news.google.com/rss/search?q={encoded_q}&hl=ms&gl=MY&ceid=MY:ms"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    
+    articles = []
+    try:
+        with httpx.Client(timeout=10, follow_redirects=True, headers=headers) as client:
+            res = client.get(url)
+            if res.status_code == 200:
+                root = ET.fromstring(res.text)
+                items = root.findall(".//item")
+                for item in items[:max_items]:
+                    raw_title = item.find("title").text if item.find("title") is not None else "Berita Trending"
+                    link = item.find("link").text if item.find("link") is not None else ""
+                    pub_date = item.find("pubDate").text if item.find("pubDate") is not None else ""
+                    description = item.find("description").text if item.find("description") is not None else ""
+                    
+                    source_name = ""
+                    if " - " in raw_title:
+                        title_parts = raw_title.rsplit(" - ", 1)
+                        title = title_parts[0].strip()
+                        source_name = title_parts[1].strip()
+                    else:
+                        title = raw_title.strip()
+                    
+                    clean_desc = re.sub(r"<[^>]+>", "", description).strip()
+                    if clean_desc.startswith(title):
+                        clean_desc = clean_desc[len(title):].strip()
+                    if len(clean_desc) > 130:
+                        clean_desc = clean_desc[:127] + "..."
+                    if not clean_desc or len(clean_desc) < 5:
+                        clean_desc = f"Berita terkini dilaporkan oleh {source_name or 'Google News'}."
+                        
+                    articles.append({
+                        "title": title,
+                        "source": source_name,
+                        "link": link,
+                        "date": pub_date,
+                        "desc": clean_desc
+                    })
+    except Exception as e:
+        logger.warning(f"Error fetching GNews RSS: {e}")
+    return articles
+
+
+def _get_gnews_keyboard():
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    keyboard = [
+        [
+            InlineKeyboardButton("💻 Gajet & Tech", callback_data="gnews_cat:gajet"),
+            InlineKeyboardButton("💼 Korporat", callback_data="gnews_cat:korporat")
+        ],
+        [
+            InlineKeyboardButton("🎭 Artis & Hiburan", callback_data="gnews_cat:artis"),
+            InlineKeyboardButton("⚽ Sukan", callback_data="gnews_cat:sukan")
+        ],
+        [
+            InlineKeyboardButton("🔥 Viral & Confession", callback_data="gnews_cat:viral"),
+            InlineKeyboardButton("⚡ Isu Semasa", callback_data="gnews_cat:nasional")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "trending", max_items: int = 6):
+    """Send GNews articles with category buttons."""
+    cat_queries = {
+        "trending": ("Malaysia trending viral 2026", "TOP 6 BERITA TRENDING & VIRAL MALAYSIA"),
+        "gajet": ("gajet teknologi telefon pintar Malaysia 2026", "TOP 10 BERITA GAJET & TEKNOLOGI"),
+        "korporat": ("korporat ekonomi perniagaan saham Malaysia 2026", "TOP 10 BERITA KORPORAT & EKONOMI"),
+        "artis": ("artis hiburan selebriti drama Malaysia 2026", "TOP 10 BERITA ARTIS & HIBURAN"),
+        "sukan": ("sukan bola sepak badminton harimau malaya 2026", "TOP 10 BERITA SUKAN MALAYSIA"),
+        "viral": ("viral panas isu sensasi luahan confession Malaysia 2026", "TOP 10 BERITA VIRAL & CONFESSION"),
+        "nasional": ("isu semasa nasional kerajaan politik Malaysia 2026", "TOP 10 ISU SEMASA NASIONAL")
+    }
+
+    q, cat_title = cat_queries.get(category, (f"{category} Malaysia 2026", f"BERITA {category.upper()}"))
+    articles = fetch_gnews_articles(q, max_items)
+    
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d (%A)")
+    
+    if not articles:
+        reply_text = f"⚠️ Tiada berita terkini dijumpai untuk kategori `{category}` dari Google News."
+        await update.message.reply_text(reply_text, parse_mode="Markdown", reply_markup=_get_gnews_keyboard())
+        return
+
+    lines = []
+    for idx, a in enumerate(articles, start=1):
+        source_badge = f" ({a['source']})" if a['source'] else ""
+        lines.append(
+            f"*{idx}. {a['title']}*{source_badge}\n"
+            f"   • {a['desc']}\n"
+            f"   👉 [Baca Sini]({a['link']})"
+        )
+    
+    body = "\n\n".join(lines)
+    
+    reply = (
+        f"🔥 *{cat_title}*\n"
+        f"───────────────\n"
+        f"📡 *Sumber*: `Google News Malaysia (Live)`\n"
+        f"📆 *Tarikh*: `{today_str}`\n\n"
+        f"{body}\n\n"
+        f"───────────────\n"
+        f"💡 *Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)*:"
+    )
+    
+    reply_markup = _get_gnews_keyboard()
+    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
+
+
 async def _get_weather_forecast(lat: float, lon: float) -> str:
     """Fetch 1-day hourly weather forecast from Open-Meteo API."""
     try:
@@ -1888,6 +2050,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                     await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=reply_markup)
                     return
+
+        if any(k in msg_clean for k in ["apa berita menarik", "berita viral", "berita trending", "berita malaysia", "gnews", "/news", "top news", "berita terkini"]):
+            await send_gnews_trending(update, context, category="trending", max_items=6)
+            return
 
         if any(k in msg_clean for k in ["set hq", "setkan hq", "set office", "sebagai hq"]):
             import memory
