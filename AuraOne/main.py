@@ -783,6 +783,84 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     import memory
     import json
 
+    # ── Location Callback Handlers (No content draft required) ──────────────
+    if data.startswith("loc_search:"):
+        category = data.split(":")[1]
+        loc = memory.get_user_location(user_id)
+        if not loc:
+            await query.answer("⚠️ Tiada lokasi tersimpan. Sila hantar lokasi (location pin) anda terlebih dahulu!", show_alert=True)
+            return
+        
+        cat_names = {
+            "makan": "Kedai Makan / Restoran Sedap",
+            "cafe": "Cafe Lepak Santai",
+            "petrol": "Stesen Minyak",
+            "hardware": "Kedai Perkakasan / Hardware"
+        }
+        cat_title = cat_names.get(category, category.title())
+        await query.message.reply_text(f"🔍 Mencari *{cat_title}* berdekatan lokasi anda...", parse_mode="Markdown")
+        
+        from tools import search_web
+        search_query = f"{cat_title} terdekat berdekatan {loc['address']}"
+        search_res = search_web(search_query)
+        
+        reply = (
+            f"📍 *HASIL CARIAN BERDEKATAN ({cat_title.upper()})*\n"
+            f"───────────────\n\n"
+            f"{search_res}\n\n"
+            f"───────────────\n"
+            f"✨ *AURA sedia bantu jika boss ada soalan lanjut!*"
+        )
+        await _send_telegram_msg(update, reply, parse_mode="Markdown")
+        return
+
+    elif data.startswith("loc_action:"):
+        act = data.split(":")[1]
+        loc = memory.get_user_location(user_id)
+        if not loc:
+            await query.answer("⚠️ Tiada lokasi tersimpan. Sila hantar lokasi (location pin) anda dahulu!", show_alert=True)
+            return
+
+        if act == "set_home":
+            memory.save_user_place(user_id, "home", loc["latitude"], loc["longitude"], loc["address"])
+            await query.answer("✅ Lokasi RUMAH berjaya disimpan!", show_alert=True)
+            reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
+            try:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+            except Exception:
+                pass
+            await query.message.reply_text(f"🏠 *LOKASI RUMAH BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
+
+        elif act == "set_hq":
+            memory.save_user_place(user_id, "hq", loc["latitude"], loc["longitude"], loc["address"])
+            await query.answer("✅ Lokasi HQ Sakluma berjaya disimpan!", show_alert=True)
+            reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
+            try:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+            except Exception:
+                pass
+            await query.message.reply_text(f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
+
+        elif act == "events_nearby":
+            await query.answer("🎉 Mengesan acara & aktiviti berdekatan...")
+            await query.message.reply_text(f"🔍 Mengumpul senarai event/aktiviti terkini berdekatan `{loc['address']}`...", parse_mode="Markdown")
+            
+            from tools import search_web
+            search_query = f"event acara pasar malam pesta aktiviti terkini berdekatan {loc['address']}"
+            events_res = search_web(search_query)
+            
+            reply = (
+                f"🎉 *ACARA & AKTIVITI BERDEKATAN*\n"
+                f"───────────────\n\n"
+                f"📍 *Kawasan*: `{loc['address']}`\n\n"
+                f"{events_res}\n\n"
+                f"───────────────\n"
+                f"✨ *AURA sedia bantu Matrol dengan perancangan aktiviti harian!*"
+            )
+            await _send_telegram_msg(update, reply, parse_mode="Markdown")
+        return
+
+    # ── Content Draft Callback Handlers (Requires active content draft) ────────
     draft = memory.get_draft(user_id)
     if not draft:
         await query.message.reply_text("⚠️ Tiada draf aktif ditemui.")
@@ -939,81 +1017,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await query.message.reply_text(f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
 
-    elif data.startswith("loc_search:"):
-        category = data.split(":")[1]
-        import memory
-        loc = memory.get_user_location(user_id)
-        if not loc:
-            await query.answer("⚠️ Tiada lokasi tersimpan. Sila hantar lokasi (location pin) anda terlebih dahulu!", show_alert=True)
-            return
-        
-        cat_names = {
-            "makan": "Kedai Makan / Restoran Sedap",
-            "cafe": "Cafe Lepak Santai",
-            "petrol": "Stesen Minyak",
-            "hardware": "Kedai Perkakasan / Hardware"
-        }
-        cat_title = cat_names.get(category, category.title())
-        await query.message.reply_text(f"🔍 Mencari *{cat_title}* berdekatan lokasi anda...", parse_mode="Markdown")
-        
-        from tools import search_web
-        search_query = f"{cat_title} terdekat berdekatan {loc['address']}"
-        search_res = search_web(search_query)
-        
-        reply = (
-            f"📍 *HASIL CARIAN BERDEKATAN ({cat_title.upper()})*\n"
-            f"───────────────\n\n"
-            f"{search_res}\n\n"
-            f"───────────────\n"
-            f"✨ *AURA sedia bantu jika boss ada soalan lanjut!*"
-        )
-        await _send_telegram_msg(update, reply, parse_mode="Markdown")
 
-    elif data.startswith("loc_action:"):
-        act = data.split(":")[1]
-        import memory
-        loc = memory.get_user_location(user_id)
-        if not loc:
-            await query.answer("⚠️ Tiada lokasi tersimpan. Sila hantar lokasi (location pin) anda dahulu!", show_alert=True)
-            return
-
-        if act == "set_home":
-            memory.save_user_place(user_id, "home", loc["latitude"], loc["longitude"], loc["address"])
-            await query.answer("✅ Lokasi RUMAH berjaya disimpan!", show_alert=True)
-            reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
-            try:
-                await query.edit_message_reply_markup(reply_markup=reply_markup)
-            except Exception:
-                pass
-            await query.message.reply_text(f"🏠 *LOKASI RUMAH BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
-
-        elif act == "set_hq":
-            memory.save_user_place(user_id, "hq", loc["latitude"], loc["longitude"], loc["address"])
-            await query.answer("✅ Lokasi HQ Sakluma berjaya disimpan!", show_alert=True)
-            reply_markup = _get_location_keyboard(user_id, loc["latitude"], loc["longitude"])
-            try:
-                await query.edit_message_reply_markup(reply_markup=reply_markup)
-            except Exception:
-                pass
-            await query.message.reply_text(f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
-
-        elif act == "events_nearby":
-            await query.answer("🎉 Mengesan acara & aktiviti berdekatan...")
-            await query.message.reply_text(f"🔍 Mengumpul senarai event/aktiviti terkini berdekatan `{loc['address']}`...", parse_mode="Markdown")
-            
-            from tools import search_web
-            search_query = f"event acara pasar malam pesta aktiviti terkini berdekatan {loc['address']}"
-            events_res = search_web(search_query)
-            
-            reply = (
-                f"🎉 *ACARA & AKTIVITI BERDEKATAN*\n"
-                f"───────────────\n\n"
-                f"📍 *Kawasan*: `{loc['address']}`\n\n"
-                f"{events_res}\n\n"
-                f"───────────────\n"
-                f"✨ *AURA sedia bantu Matrol dengan perancangan aktiviti harian!*"
-            )
-            await _send_telegram_msg(update, reply, parse_mode="Markdown")
 
 
 
