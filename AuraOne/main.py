@@ -1716,30 +1716,25 @@ def _get_viral_confessions_keyboard(offset: int = 0):
 
 
 async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: int = 0):
-    """Fetch 6 sensational viral/confession articles from IIUMC, Reddit Bolehland/Malaysia, and Lowyat forum with pagination."""
+    """Fetch 6 sensational viral/confession articles from IIUMC, Reddit Bolehland/Malaysia, and forums with robust fallback."""
     queries = [
-        "IIUM Confessions luahan rumah tangga curang skandal 2026",
-        "Reddit Bolehland Malaysia confession luahan isteri suami curang 2026",
-        "Lowyat Kopitiam luahan confession rumah tangga viral 2026",
-        "Confession luahan rahsia perkahwinan sensasi Malaysia 2026"
+        "viral confession luahan rumah tangga curang Malaysia 2026",
+        "IIUM Confessions luahan rumah tangga skandal 2026",
+        "Reddit Bolehland Malaysia luahan isteri suami curang 2026",
+        "Lowyat Kopitiam luahan confession rumah tangga viral 2026"
     ]
     
     q = queries[(offset // 6) % len(queries)]
     from tools import search_web
-    search_res = search_web(f"{q} site:iiumc.com OR site:reddit.com OR site:forum.lowyat.net")
+    search_res = search_web(q)
     
     results = search_res.get("results", []) if isinstance(search_res, dict) else []
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
-    if not results:
-        # Fallback to GNews search if specific forum search yields zero
-        results_gnews = fetch_gnews_articles("confession luahan rumah tangga viral Malaysia 2026", max_items=6)
-        articles = results_gnews
-    else:
-        articles = []
+    articles = []
+    if results:
         for item in results:
             link = item.get("link", "").strip()
-            # Explicitly exclude Facebook URLs
             if "facebook.com" in link.lower() or "fb.com" in link.lower():
                 continue
                 
@@ -1751,13 +1746,17 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
             if not snippet:
                 snippet = "Kisah luahan sensasi masyarakat & netizen Malaysia."
                 
-            source_name = "Forum / Portal Luahan"
+            source_name = "Portal Luahan"
             if "iiumc" in link.lower():
                 source_name = "IIUM Confessions"
             elif "reddit.com" in link.lower():
                 source_name = "Reddit Malaysia"
             elif "lowyat" in link.lower():
                 source_name = "Lowyat Forum"
+            elif "kosmo" in link.lower():
+                source_name = "Kosmo Digital"
+            elif "sinar" in link.lower():
+                source_name = "Sinar Harian"
 
             articles.append({
                 "title": title,
@@ -1765,6 +1764,15 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
                 "link": link,
                 "desc": snippet
             })
+            if len(articles) >= 6:
+                break
+
+    # If web search returned less than 6 items, fill remaining items with GNews RSS
+    if len(articles) < 6:
+        gnews_items = fetch_gnews_articles("confession luahan rumah tangga viral Malaysia 2026", max_items=10)
+        for g in gnews_items:
+            if not any(a["link"] == g["link"] for a in articles):
+                articles.append(g)
             if len(articles) >= 6:
                 break
 
