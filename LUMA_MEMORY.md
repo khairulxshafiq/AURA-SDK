@@ -118,6 +118,10 @@
   * Patched SDK virtual environment file `litert_connection.py` to add `MODEL_TYPE_IMAGE` capability support to `LocalOpenAIConnectionStrategy`, and implemented local temp file photo caching with automated OpenRouter proxy payload rewriting to format and inject base64 `image_url` objects directly into fallback API calls. Cleared rate-limited `GEMINI_API_KEY` environment leakage before starting OpenRouter Agent sessions to prevent harness process validation errors.
   * Implemented dynamic platform pre-selection: If the user mentions platforms (like `"fb"`, `"threads"`, `"x"`, etc.) in their text/caption prompt, AURA automatically checks them in the keyboard menu. Locked the drafting flow to always pass through the platform and style (persona) selection keyboard loop, ensuring consistency with the article scraping flow.
   * Redesigned Telegram location response format into a premium structured card featuring monospace codeblocks for address & GPS coordinates, direct Google Maps link integration, and quick-prompt suggestions. Upgraded `_send_telegram_msg` parser to support HTML codeblock conversion.
+  * Added 1-day statistical weather forecast (Pagi, Petang, Malam with temperature & rain probability) integrated directly into Telegram location update card via Open-Meteo API.
+  * Implemented location quick-search inline keyboard buttons (`[🍽️ Makan Best]`, `[☕ Cafe Lepak]`, `[⛽ Stesen Minyak]`, `[🛠️ Hardware]`) to trigger direct nearby web/location searches upon click.
+  * Added `/sethome` (or `/setrumah`) and `/sethq` (or `/setoffice`) commands with SQLite persistent storage (`user_saved_places`), automatically rendering direct Google Maps navigation buttons (`[🏠 Navigasi Ke Rumah]`, `[🏢 Navigasi Ke HQ]`) whenever location updates are shared.
+
 
 
 
