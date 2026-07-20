@@ -2206,7 +2206,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-    # ── Typing Heartbeat & Live Status Reply ───────────────────────────────────
+    # ── Typing Heartbeat & Smart Status Reply ──────────────────────────────────
     typing_active = True
     async def _typing_heartbeat():
         while typing_active:
@@ -2220,19 +2220,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     typing_task = asyncio.create_task(_typing_heartbeat())
 
     status_msg = None
-    try:
-        status_msg = await update.message.reply_text(
-            f"⏳ *AURA sedang memproses permintaan boss...*\n"
-            f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`\n"
-            f"🔍 *Status*: Menerima arahan & memulakan carian/analisis...",
-            parse_mode="Markdown"
-        )
-    except Exception as st_err:
-        logger.warning(f"Could not send initial status msg: {st_err}")
+    gemini_success = False
+
+    # Only show popup status message if task takes longer than 3.0 seconds (e.g. web search / scraping)
+    async def _show_status_if_delayed(delay: float = 3.0):
+        nonlocal status_msg
+        await asyncio.sleep(delay)
+        if not gemini_success and not status_msg:
+            try:
+                status_msg = await update.message.reply_text(
+                    f"⏳ *AURA sedang memproses carian/analisis...*\n"
+                    f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`",
+                    parse_mode="Markdown"
+                )
+            except Exception as st_err:
+                logger.warning(f"Could not send delayed status msg: {st_err}")
+
+    delayed_status_task = asyncio.create_task(_show_status_if_delayed(3.0))
 
     conv_id = _get_conv_id_for_user(user_id)
-
-    gemini_success = False
     response_text = ""
     num_keys = len(GEMINI_KEYS)
 
@@ -2258,14 +2264,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.environ["GEMINI_API_KEY"] = active_key
             gemini_config = _build_gemini_config(conv_id)
 
-            if status_msg and attempt > 0:
+            if attempt > 0:
                 try:
-                    await status_msg.edit_text(
-                        f"⏳ *Menukar ke Kunci API [F{current_key_idx + 1}]...*\n"
-                        f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`\n"
-                        f"🔍 *Status*: Memproses carian...",
-                        parse_mode="Markdown"
-                    )
+                    if status_msg:
+                        await status_msg.edit_text(
+                            f"⏳ *Menukar ke Kunci API [F{current_key_idx + 1}]...*\n"
+                            f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`",
+                            parse_mode="Markdown"
+                        )
+                    else:
+                        status_msg = await update.message.reply_text(
+                            f"⏳ *Menukar ke Kunci API [F{current_key_idx + 1}]...*\n"
+                            f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`",
+                            parse_mode="Markdown"
+                        )
                 except Exception:
                     pass
 
