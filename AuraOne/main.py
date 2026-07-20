@@ -2216,7 +2216,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import time
     import memory
     
-    # Try max 2 Gemini key attempts with tight 8.0s timeout per attempt for superfast response
+    # Try max 2 Gemini key attempts with ultra-fast 3.5s timeout for sub-second failover
     max_gemini_attempts = min(2, num_keys)
     for attempt in range(max_gemini_attempts):
         active_key = GEMINI_KEYS[current_key_idx]
@@ -2238,7 +2238,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gemini_config = _build_gemini_config(conv_id)
 
         try:
-            logger.info(f"[Gemini] Fast-attempt using key index {current_key_idx}/{num_keys} (timeout: 8.0s)...")
+            logger.info(f"[Gemini] Ultra-fast attempt using key index {current_key_idx}/{num_keys} (timeout: 3.5s)...")
             import asyncio
             async with Agent(gemini_config) as agent:
                 chat_input = [media_part, user_message] if media_part else user_message
@@ -2247,7 +2247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     resp = await agent.chat(chat_input)
                     return await resp.text()
 
-                response_text = await asyncio.wait_for(_exec_gemini(), timeout=8.0)
+                response_text = await asyncio.wait_for(_exec_gemini(), timeout=3.5)
 
                 if not conv_id:
                     new_id = agent.conversation_id
@@ -2275,8 +2275,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         return
 
-    # If Gemini free keys are slow or rate limited, INSTANTLY BYPASS to OpenRouter proxy!
-    logger.warning(f"[Gemini] Free keys slow/rate-limited. Instantly bypassing to OpenRouter Proxy...")
+    # If Gemini free keys take longer than 3.5s, INSTANTLY HYPERSPEED BYPASS to OpenRouter proxy!
+    logger.warning(f"[Gemini] Free keys slow (>3.5s). Instantly Hyperspeed Bypassing to OpenRouter Proxy...")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     if not OPENROUTER_API_KEY:
@@ -2299,7 +2299,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resp = await agent.chat(chat_input)
                 return await resp.text()
 
-            response_text = await asyncio.wait_for(_exec_or(), timeout=35.0)
+            response_text = await asyncio.wait_for(_exec_or(), timeout=20.0)
 
             if not conv_id:
                 new_id = agent.conversation_id
