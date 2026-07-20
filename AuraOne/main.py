@@ -2206,187 +2206,121 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-    # ── Typing Heartbeat & Smart Status Reply ──────────────────────────────────
-    typing_active = True
-    async def _typing_heartbeat():
-        while typing_active:
-            try:
-                await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-                await asyncio.sleep(4)
-            except Exception:
-                break
-
-    import asyncio
-    typing_task = asyncio.create_task(_typing_heartbeat())
-
-    status_msg = None
-    gemini_success = False
-
-    # Only show popup status message if task takes longer than 5.0 seconds (genuinely long waiting time)
-    async def _show_status_if_delayed(delay: float = 5.0):
-        nonlocal status_msg
-        await asyncio.sleep(delay)
-        if not gemini_success and not status_msg:
-            try:
-                status_msg = await update.message.reply_text(
-                    f"⏳ *AURA sedang memproses carian/analisis...*",
-                    parse_mode="Markdown"
-                )
-            except Exception as st_err:
-                logger.warning(f"Could not send delayed status msg: {st_err}")
-
-    delayed_status_task = asyncio.create_task(_show_status_if_delayed(5.0))
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     conv_id = _get_conv_id_for_user(user_id)
+    gemini_success = False
     response_text = ""
     num_keys = len(GEMINI_KEYS)
 
     import time
     import memory
-    try:
-        for attempt in range(num_keys):
-            active_key = GEMINI_KEYS[current_key_idx]
-            
-            # Check persistent cooldown from SQLite memory database
-            prefs = memory.get_preferences()
-            cooldown_expiry_str = prefs.get(f"cooldown:{active_key}", "0.0")
-            try:
-                cooldown_expiry = float(cooldown_expiry_str)
-            except ValueError:
-                cooldown_expiry = 0.0
-                
-            if cooldown_expiry > time.time():
-                logger.info(f"[Gemini] Key index {current_key_idx} is on cooldown for another {int(cooldown_expiry - time.time())}s. Skipping...")
-                current_key_idx = (current_key_idx + 1) % num_keys
-                continue
-
-            os.environ["GEMINI_API_KEY"] = active_key
-            gemini_config = _build_gemini_config(conv_id)
-
-            if attempt > 0:
-                try:
-                    if status_msg:
-                        await status_msg.edit_text(
-                            f"⏳ *Menukar kunci API [F{current_key_idx + 1}]...*",
-                            parse_mode="Markdown"
-                        )
-                    else:
-                        status_msg = await update.message.reply_text(
-                            f"⏳ *Menukar kunci API [F{current_key_idx + 1}]...*",
-                            parse_mode="Markdown"
-                        )
-                except Exception:
-                    pass
-
-            try:
-                logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
-                async with Agent(gemini_config) as agent:
-                    chat_input = [media_part, user_message] if media_part else user_message
-                    
-                    async def _exec_gemini():
-                        resp = await agent.chat(chat_input)
-                        return await resp.text()
-
-                    response_text = await asyncio.wait_for(_exec_gemini(), timeout=50.0)
-
-                    if not conv_id:
-                        new_id = agent.conversation_id
-                        if new_id:
-                            _register_conv_id_for_user(user_id, new_id)
-                            logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
-                gemini_success = True
-                break
-            except (asyncio.TimeoutError, Exception) as gemini_err:
-                logger.warning(f"[Gemini] Key index {current_key_idx} error/timeout: {gemini_err}. Rotating to next key...")
-                memory.update_preference(f"cooldown:{active_key}", str(time.time() + 30.0))
-                current_key_idx = (current_key_idx + 1) % num_keys
-                continue
-
-        if status_msg:
-            try:
-                await status_msg.delete()
-            except Exception:
-                pass
-
-        if gemini_success:
-            response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
-            if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
-                return
-            if is_debug:
-                final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
-                await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
-            else:
-                clean = _clean_response(response_text)
-                final_text = _send_safe_message(clean)
-                await _send_telegram_msg(update, final_text, parse_mode="Markdown")
-            return
-
-        # If we reach here, all Gemini free keys hit rate limits. Fallback to OpenRouter.
-        logger.warning(f"[Gemini] All {num_keys} keys rate limited. Switching to OpenRouter...")
+    for attempt in range(num_keys):
+        active_key = GEMINI_KEYS[current_key_idx]
         
-        status_msg = await update.message.reply_text(
-            f"⏳ *Menukar ke OpenRouter Fallback Proxy...*",
-            parse_mode="Markdown"
-        )
+        # Check persistent cooldown from SQLite memory database
+        prefs = memory.get_preferences()
+        cooldown_expiry_str = prefs.get(f"cooldown:{active_key}", "0.0")
+        try:
+            cooldown_expiry = float(cooldown_expiry_str)
+        except ValueError:
+            cooldown_expiry = 0.0
+            
+        if cooldown_expiry > time.time():
+            logger.info(f"[Gemini] Key index {current_key_idx} is on cooldown for another {int(cooldown_expiry - time.time())}s. Skipping...")
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
 
-        if not OPENROUTER_API_KEY:
-            await update.message.reply_text(
-                "⚠️ Gemini telah mencapai had penggunaan dan OPENROUTER_API_KEY tidak dikonfigurasi."
-            )
-            return
-
-        if "GEMINI_API_KEY" in os.environ:
-            del os.environ["GEMINI_API_KEY"]
-
-        or_config = _build_openrouter_config(conv_id)
+        os.environ["GEMINI_API_KEY"] = active_key
+        gemini_config = _build_gemini_config(conv_id)
 
         try:
-            async with Agent(or_config) as agent:
+            logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
+            import asyncio
+            async with Agent(gemini_config) as agent:
                 chat_input = [media_part, user_message] if media_part else user_message
                 
-                async def _exec_or():
+                async def _exec_gemini():
                     resp = await agent.chat(chat_input)
                     return await resp.text()
 
-                response_text = await asyncio.wait_for(_exec_or(), timeout=50.0)
+                response_text = await asyncio.wait_for(_exec_gemini(), timeout=50.0)
 
                 if not conv_id:
                     new_id = agent.conversation_id
                     if new_id:
                         _register_conv_id_for_user(user_id, new_id)
-                        logger.info(f"[OpenRouter] New session for user {user_id}: {new_id}")
+                        logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
+            gemini_success = True
+            break
+        except (asyncio.TimeoutError, Exception) as gemini_err:
+            logger.warning(f"[Gemini] Key index {current_key_idx} error/timeout: {gemini_err}. Rotating to next key...")
+            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 30.0))
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
 
-            if status_msg:
-                try:
-                    await status_msg.delete()
-                except Exception:
-                    pass
+    if gemini_success:
+        response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
+        if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
+            return
+        if is_debug:
+            final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
+            await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
+        else:
+            clean = _clean_response(response_text)
+            final_text = _send_safe_message(clean)
+            await _send_telegram_msg(update, final_text, parse_mode="Markdown")
+        return
 
-            response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
-            if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
-                return
-            if is_debug:
-                final_text = _send_safe_message(f"🔧 *[DEBUG: OpenRouter — {OPENROUTER_FALLBACK_MODEL}]*\n\n{response_text}")
-                await _send_telegram_msg(update, final_text, parse_mode="Markdown")
-            else:
-                clean = _clean_response(response_text)
-                final_text = _send_safe_message(clean)
-                await _send_telegram_msg(update, final_text, parse_mode="Markdown")
+    # If we reach here, all Gemini free keys hit rate limits. Fallback to OpenRouter.
+    logger.warning(f"[Gemini] All {num_keys} keys rate limited. Switching to OpenRouter...")
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
-        except Exception as or_err:
-            if status_msg:
-                try:
-                    await status_msg.delete()
-                except Exception:
-                    pass
-            logger.error(f"[OpenRouter] Fallback error for user {user_id}: {or_err}", exc_info=True)
-            err_msg = _send_safe_message(
-                f"⚠️ Kedua-dua model gagal:\n• Gemini: Had penggunaan\n• OpenRouter: {str(or_err)}"
-            )
-            await _send_telegram_msg(update, err_msg)
-    finally:
-        typing_active = False
-        typing_task.cancel()
+    if not OPENROUTER_API_KEY:
+        await update.message.reply_text(
+            "⚠️ Gemini telah mencapai had penggunaan dan OPENROUTER_API_KEY tidak dikonfigurasi."
+        )
+        return
+
+    if "GEMINI_API_KEY" in os.environ:
+        del os.environ["GEMINI_API_KEY"]
+
+    or_config = _build_openrouter_config(conv_id)
+
+    try:
+        import asyncio
+        async with Agent(or_config) as agent:
+            chat_input = [media_part, user_message] if media_part else user_message
+            
+            async def _exec_or():
+                resp = await agent.chat(chat_input)
+                return await resp.text()
+
+            response_text = await asyncio.wait_for(_exec_or(), timeout=50.0)
+
+            if not conv_id:
+                new_id = agent.conversation_id
+                if new_id:
+                    _register_conv_id_for_user(user_id, new_id)
+                    logger.info(f"[OpenRouter] New session for user {user_id}: {new_id}")
+
+        response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
+        if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
+            return
+        if is_debug:
+            final_text = _send_safe_message(f"🔧 *[DEBUG: OpenRouter — {OPENROUTER_FALLBACK_MODEL}]*\n\n{response_text}")
+            await _send_telegram_msg(update, final_text, parse_mode="Markdown")
+        else:
+            clean = _clean_response(response_text)
+            final_text = _send_safe_message(clean)
+            await _send_telegram_msg(update, final_text, parse_mode="Markdown")
+
+    except Exception as or_err:
+        logger.error(f"[OpenRouter] Fallback error for user {user_id}: {or_err}", exc_info=True)
+        err_msg = _send_safe_message(
+            f"⚠️ Kedua-dua model gagal:\n• Gemini: Had penggunaan\n• OpenRouter: {str(or_err)}"
+        )
+        await _send_telegram_msg(update, err_msg)
 
 
 
