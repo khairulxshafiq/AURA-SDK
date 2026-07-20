@@ -1434,7 +1434,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     reply_text = (
         f"📍 *LOKASI BOSS BERJAYA DIKEMASKINI*\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"───────────────\n\n"
         f"🏢 *Alamat Semasa*:\n`{address}`\n\n"
         f"📌 *Koordinat GPS*:\n`{lat}, {lon}`\n\n"
         f"🗺️ *Pautan Peta*:\n[Buka Dalam Google Maps]({maps_url})\n\n"
@@ -1442,7 +1442,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"• 🍽️ *\"Kedai makan sedap terdekat?\"*\n"
         f"• 🛒 *\"Kedai runcit/hardware terdekat?\"*\n"
         f"• 📍 *\"Saya kat mana sekarang?\"*\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"───────────────\n"
         f"✨ *AURA sedia bantu Matrol mengikut lokasi ini!*"
     )
     await _send_telegram_msg(update, reply_text, parse_mode="Markdown")
