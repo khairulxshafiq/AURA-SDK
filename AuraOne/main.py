@@ -2216,9 +2216,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     import time
     import memory
     
-    # Try max 2 Gemini key attempts with ultra-fast 3.5s timeout for sub-second failover
-    max_gemini_attempts = min(2, num_keys)
-    for attempt in range(max_gemini_attempts):
+    for attempt in range(num_keys):
         active_key = GEMINI_KEYS[current_key_idx]
         
         # Check persistent cooldown from SQLite memory database
@@ -2238,16 +2236,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gemini_config = _build_gemini_config(conv_id)
 
         try:
-            logger.info(f"[Gemini] Ultra-fast attempt using key index {current_key_idx}/{num_keys} (timeout: 3.5s)...")
-            import asyncio
+            logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
             async with Agent(gemini_config) as agent:
                 chat_input = [media_part, user_message] if media_part else user_message
-                
-                async def _exec_gemini():
-                    resp = await agent.chat(chat_input)
-                    return await resp.text()
-
-                response_text = await asyncio.wait_for(_exec_gemini(), timeout=3.5)
+                response = await agent.chat(chat_input)
+                response_text = await response.text()
 
                 if not conv_id:
                     new_id = agent.conversation_id
@@ -2256,8 +2249,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         logger.info(f"[Gemini] New session for user {user_id}: {new_id}")
             gemini_success = True
             break
-        except (asyncio.TimeoutError, Exception) as gemini_err:
-            logger.warning(f"[Gemini] Key index {current_key_idx} error/timeout: {gemini_err}. Rotating key immediately...")
+        except Exception as gemini_err:
+            logger.warning(f"[Gemini] Key index {current_key_idx} error: {gemini_err}. Putting on 3-min cooldown and rotating...")
             memory.update_preference(f"cooldown:{active_key}", str(time.time() + 180.0))
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
@@ -2275,8 +2268,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         return
 
-    # If Gemini free keys take longer than 3.5s, INSTANTLY HYPERSPEED BYPASS to OpenRouter proxy!
-    logger.warning(f"[Gemini] Free keys slow (>3.5s). Instantly Hyperspeed Bypassing to OpenRouter Proxy...")
+    # If all free keys hit rate limits, fall back to OpenRouter Proxy
+    logger.warning(f"[Gemini] All {num_keys} keys rate limited or unavailable. Switching to OpenRouter Proxy...")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     if not OPENROUTER_API_KEY:
@@ -2291,15 +2284,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     or_config = _build_openrouter_config(conv_id)
 
     try:
-        import asyncio
         async with Agent(or_config) as agent:
             chat_input = [media_part, user_message] if media_part else user_message
-            
-            async def _exec_or():
-                resp = await agent.chat(chat_input)
-                return await resp.text()
-
-            response_text = await asyncio.wait_for(_exec_or(), timeout=20.0)
+            response = await agent.chat(chat_input)
+            response_text = await response.text()
 
             if not conv_id:
                 new_id = agent.conversation_id
