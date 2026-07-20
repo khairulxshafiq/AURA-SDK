@@ -1549,8 +1549,8 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
     keyboard = [
         [
             InlineKeyboardButton("🏠 Home", callback_data="loc_action:set_home"),
-            InlineKeyboardButton("🏢 Set HQ", callback_data="loc_action:set_hq"),
-            InlineKeyboardButton("🌤️ Cuaca 7 Hari", callback_data="loc_action:weather_full")
+            InlineKeyboardButton("🏢 Work", callback_data="loc_action:set_hq"),
+            InlineKeyboardButton("🌤️ Weather", callback_data="loc_action:weather_full")
         ],
         [
             InlineKeyboardButton("🍽️ Makan Best", callback_data="loc_search:makan"),
@@ -1567,12 +1567,12 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
         h_lat = places["home"]["lat"]
         h_lon = places["home"]["lon"]
         nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={h_lat},{h_lon}"
-        nav_row.append(InlineKeyboardButton("🚗 Ke Rumah", url=nav_url))
+        nav_row.append(InlineKeyboardButton("🚗 Nav Home", url=nav_url))
     if "hq" in places:
         hq_lat = places["hq"]["lat"]
         hq_lon = places["hq"]["lon"]
         nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={hq_lat},{hq_lon}"
-        nav_row.append(InlineKeyboardButton("🏎️ Ke HQ", url=nav_url))
+        nav_row.append(InlineKeyboardButton("🏎️ Nav Work", url=nav_url))
         
     if nav_row:
         keyboard.append(nav_row)
