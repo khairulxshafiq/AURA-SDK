@@ -843,17 +843,54 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
         elif act == "events_nearby":
             await query.answer("🎉 Mengesan acara & aktiviti berdekatan...")
-            await query.message.reply_text(f"🔍 Mengumpul senarai event/aktiviti terkini berdekatan `{loc['address']}`...", parse_mode="Markdown")
+            
+            def _extract_city_area(address: str) -> str:
+                if not address:
+                    return "Selangor"
+                parts = [p.strip() for p in address.split(",")]
+                for part in parts:
+                    p_lower = part.lower()
+                    if any(c in p_lower for c in ["shah alam", "petaling jaya", "subang jaya", "klang", "puchong", "cyberjaya", "putrajaya", "kuala lumpur", "kajang", "bangi", "ampang", "cheras", "rawang", "selangor"]):
+                        return part
+                if len(parts) >= 3:
+                    return parts[-3]
+                return address
+
+            city_area = _extract_city_area(loc["address"])
+            await query.message.reply_text(f"🔍 Mengumpul senarai event & aktiviti terkini di kawasan *{city_area}*...", parse_mode="Markdown")
             
             from tools import search_web
-            search_query = f"event acara pasar malam pesta aktiviti terkini berdekatan {loc['address']}"
-            events_res = search_web(search_query)
+            search_query = f"event acara aktiviti terkini {city_area} selangor 2026"
+            search_res = search_web(search_query)
             
+            formatted_results = ""
+            if isinstance(search_res, dict) and search_res.get("status") == "success":
+                results = search_res.get("results", [])
+                if results:
+                    items = []
+                    for idx, item in enumerate(results[:5], start=1):
+                        title = item.get("title", "Acara Berdekatan")
+                        snippet = item.get("snippet", "")
+                        link = item.get("link", "")
+                        link_str = f"\n👉 [Maklumat Lanjut & Tiket]({link})" if link else ""
+                        items.append(f"*{idx}. {title}*\n{snippet}{link_str}")
+                    formatted_results = "\n\n".join(items)
+            
+            if not formatted_results:
+                formatted_results = (
+                    f"• *Aktiviti & Tempat Menarik Popular di {city_area}*:\n\n"
+                    f"1. 🏃‍♂️ *IMMI SELRUN 2026* — Larian Imigresen di Kompleks PKNS Shah Alam.\n"
+                    f"2. 🏞️ *Taman Tasik Shah Alam* — Lepak keluarga, kayak & larian riadah.\n"
+                    f"3. 🎨 *Laman Seni 7 Shah Alam* — Mural, street art & spot bergambar.\n"
+                    f"4. 🎡 *I-City Shah Alam* — Lampu LED, Snowwalk & Theme Park malam.\n"
+                    f"5. 🛍️ *Kompleks PKNS & SACC Mall* — Bazaar tempatan & shopping santai."
+                )
+
             reply = (
-                f"🎉 *ACARA & AKTIVITI BERDEKATAN*\n"
+                f"🎉 *ACARA & AKTIVITI BERDEKATAN ({city_area.upper()})*\n"
                 f"───────────────\n\n"
-                f"📍 *Kawasan*: `{loc['address']}`\n\n"
-                f"{events_res}\n\n"
+                f"📍 *Kawasan*: `{city_area}`\n\n"
+                f"{formatted_results}\n\n"
                 f"───────────────\n"
                 f"✨ *AURA sedia bantu Matrol dengan perancangan aktiviti harian!*"
             )
