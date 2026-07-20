@@ -997,16 +997,21 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 pass
             await query.message.reply_text(f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
 
-        elif act == "weather_full":
-            await query.answer("⏳ Mengambil ramalan cuaca 7 hari...")
-            weather_7days = await _get_extended_weather_forecast(loc["latitude"], loc["longitude"])
+        elif act == "events_nearby":
+            await query.answer("🎉 Mengesan acara & aktiviti berdekatan...")
+            await query.message.reply_text(f"🔍 Mengumpul senarai event/aktiviti terkini berdekatan `{loc['address']}`...", parse_mode="Markdown")
+            
+            from tools import search_web
+            search_query = f"event acara pasar malam pesta aktiviti terkini berdekatan {loc['address']}"
+            events_res = search_web(search_query)
+            
             reply = (
-                f"🌤️ *RAMALAN CUACA 7 HARI TERKINI*\n"
+                f"🎉 *ACARA & AKTIVITI BERDEKATAN*\n"
                 f"───────────────\n\n"
-                f"📍 *Lokasi*: `{loc['address']}`\n\n"
-                f"{weather_7days}\n\n"
+                f"📍 *Kawasan*: `{loc['address']}`\n\n"
+                f"{events_res}\n\n"
                 f"───────────────\n"
-                f"✨ *AURA sedia bantu Matrol dengan perancangan mingguan!*"
+                f"✨ *AURA sedia bantu Matrol dengan perancangan aktiviti harian!*"
             )
             await _send_telegram_msg(update, reply, parse_mode="Markdown")
 
@@ -1574,7 +1579,7 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
         [
             home_btn,
             work_btn,
-            InlineKeyboardButton("🌤️ Weather", callback_data="loc_action:weather_full")
+            InlineKeyboardButton("🎉 Events", callback_data="loc_action:events_nearby")
         ],
         [
             InlineKeyboardButton("🍽️ Makan Best", url=makan_url),
