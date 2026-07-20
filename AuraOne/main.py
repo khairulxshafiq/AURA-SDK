@@ -1548,7 +1548,7 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
     
     keyboard = [
         [
-            InlineKeyboardButton("🏠 Set Rumah", callback_data="loc_action:set_home"),
+            InlineKeyboardButton("🏠 Home", callback_data="loc_action:set_home"),
             InlineKeyboardButton("🏢 Set HQ", callback_data="loc_action:set_hq"),
             InlineKeyboardButton("🌤️ Cuaca 7 Hari", callback_data="loc_action:weather_full")
         ],
