@@ -2215,7 +2215,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     import time
     import memory
-    for attempt in range(num_keys):
+    
+    # Try max 2 Gemini key attempts with tight 8.0s timeout per attempt for superfast response
+    max_gemini_attempts = min(2, num_keys)
+    for attempt in range(max_gemini_attempts):
         active_key = GEMINI_KEYS[current_key_idx]
         
         # Check persistent cooldown from SQLite memory database
@@ -2235,7 +2238,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gemini_config = _build_gemini_config(conv_id)
 
         try:
-            logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
+            logger.info(f"[Gemini] Fast-attempt using key index {current_key_idx}/{num_keys} (timeout: 8.0s)...")
             import asyncio
             async with Agent(gemini_config) as agent:
                 chat_input = [media_part, user_message] if media_part else user_message
@@ -2244,7 +2247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     resp = await agent.chat(chat_input)
                     return await resp.text()
 
-                response_text = await asyncio.wait_for(_exec_gemini(), timeout=50.0)
+                response_text = await asyncio.wait_for(_exec_gemini(), timeout=8.0)
 
                 if not conv_id:
                     new_id = agent.conversation_id
@@ -2254,8 +2257,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gemini_success = True
             break
         except (asyncio.TimeoutError, Exception) as gemini_err:
-            logger.warning(f"[Gemini] Key index {current_key_idx} error/timeout: {gemini_err}. Rotating to next key...")
-            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 30.0))
+            logger.warning(f"[Gemini] Key index {current_key_idx} error/timeout: {gemini_err}. Rotating key immediately...")
+            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 180.0))
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
 
@@ -2272,8 +2275,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         return
 
-    # If we reach here, all Gemini free keys hit rate limits. Fallback to OpenRouter.
-    logger.warning(f"[Gemini] All {num_keys} keys rate limited. Switching to OpenRouter...")
+    # If Gemini free keys are slow or rate limited, INSTANTLY BYPASS to OpenRouter proxy!
+    logger.warning(f"[Gemini] Free keys slow/rate-limited. Instantly bypassing to OpenRouter Proxy...")
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
 
     if not OPENROUTER_API_KEY:
@@ -2296,7 +2299,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 resp = await agent.chat(chat_input)
                 return await resp.text()
 
-            response_text = await asyncio.wait_for(_exec_or(), timeout=50.0)
+            response_text = await asyncio.wait_for(_exec_or(), timeout=35.0)
 
             if not conv_id:
                 new_id = agent.conversation_id
