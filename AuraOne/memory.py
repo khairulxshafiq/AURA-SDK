@@ -40,6 +40,19 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Table for storing user saved places (/sethome, /sethq)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_saved_places (
+            user_id INTEGER,
+            place_name TEXT,
+            latitude REAL,
+            longitude REAL,
+            address TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, place_name)
+        )
+    """)
     
     # Recreate drafts table with support for active platform draft selections and interactive state
     cursor.execute("DROP TABLE IF EXISTS drafts")
@@ -291,4 +304,37 @@ def get_user_location(user_id: int) -> dict:
     if row:
         return dict(row)
     return None
+
+
+def save_user_place(user_id: int, place_name: str, latitude: float, longitude: float, address: str):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_saved_places (user_id, place_name, latitude, longitude, address, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, place_name) DO UPDATE SET
+            latitude=excluded.latitude,
+            longitude=excluded.longitude,
+            address=excluded.address,
+            updated_at=CURRENT_TIMESTAMP
+    """, (user_id, place_name.lower(), latitude, longitude, address))
+    conn.commit()
+    conn.close()
+
+
+def get_user_places(user_id: int) -> dict:
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT place_name, latitude, longitude, address FROM user_saved_places WHERE user_id = ?", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    places = {}
+    for r in rows:
+        places[r["place_name"].lower()] = {
+            "lat": r["latitude"],
+            "lon": r["longitude"],
+            "address": r["address"]
+        }
+    return places
 

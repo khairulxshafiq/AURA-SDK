@@ -939,6 +939,36 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await query.message.reply_text(f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
 
+    elif data.startswith("loc_search:"):
+        category = data.split(":")[1]
+        import memory
+        loc = memory.get_user_location(user_id)
+        if not loc:
+            await query.answer("⚠️ Tiada lokasi tersimpan. Sila hantar lokasi (location pin) anda terlebih dahulu!", show_alert=True)
+            return
+        
+        cat_names = {
+            "makan": "Kedai Makan / Restoran Sedap",
+            "cafe": "Cafe Lepak Santai",
+            "petrol": "Stesen Minyak",
+            "hardware": "Kedai Perkakasan / Hardware"
+        }
+        cat_title = cat_names.get(category, category.title())
+        await query.message.reply_text(f"🔍 Mencari *{cat_title}* berdekatan lokasi anda...", parse_mode="Markdown")
+        
+        from tools import search_web
+        search_query = f"{cat_title} terdekat berdekatan {loc['address']}"
+        search_res = search_web(search_query)
+        
+        reply = (
+            f"📍 *HASIL CARIAN BERDEKATAN ({cat_title.upper()})*\n"
+            f"───────────────\n\n"
+            f"{search_res}\n\n"
+            f"───────────────\n"
+            f"✨ *AURA sedia bantu jika boss ada soalan lanjut!*"
+        )
+        await _send_telegram_msg(update, reply, parse_mode="Markdown")
+
 
 
 async def _process_response_draft(user_id: int, chat_id: int, response_text: str, context, update) -> str:
@@ -1396,6 +1426,75 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
+async def _get_weather_forecast(lat: float, lon: float) -> str:
+    """Fetch 1-day hourly weather forecast from Open-Meteo API."""
+    try:
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude={lat}&longitude={lon}"
+            f"&hourly=temperature_2m,weathercode,precipitation_probability"
+            f"&timezone=Asia%2FKuala_Lumpur&forecast_days=1"
+        )
+        async with httpx.AsyncClient(timeout=8) as client:
+            res = await client.get(url)
+            if res.status_code == 200:
+                data = res.json()
+                hourly = data.get("hourly", {})
+                temps = hourly.get("temperature_2m", [])
+                codes = hourly.get("weathercode", [])
+                precip = hourly.get("precipitation_probability", [])
+
+                def get_desc(c, p):
+                    if c == 0: return "☀️ Cerah"
+                    elif c in [1, 2, 3]: return "⛅ Berawan"
+                    elif c in [45, 48]: return "🌫️ Kabus"
+                    elif c in [51, 53, 55, 61, 63, 65, 80, 81, 82]: return f"🌧️ Hujan ({p}%)"
+                    elif c in [95, 96, 99]: return f"⛈️ Ribut ({p}%)"
+                    return "🌤️ Redup"
+
+                pagi = f"• *Pagi (9am)*: {get_desc(codes[9], precip[9])} | `{temps[9]}°C`"
+                ptg = f"• *Petang (3pm)*: {get_desc(codes[15], precip[15])} | `{temps[15]}°C`"
+                malam = f"• *Malam (9pm)*: {get_desc(codes[21], precip[21])} | `{temps[21]}°C`"
+                return f"{pagi}\n{ptg}\n{malam}"
+    except Exception as e:
+        logger.warning(f"Weather forecast error: {e}")
+    return "• *Cuaca*: Tidak dapat diproses"
+
+
+def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float):
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    import memory
+    places = memory.get_user_places(user_id)
+    
+    keyboard = [
+        [
+            InlineKeyboardButton("🍽️ Makan Best", callback_data="loc_search:makan"),
+            InlineKeyboardButton("☕ Cafe Lepak", callback_data="loc_search:cafe"),
+        ],
+        [
+            InlineKeyboardButton("⛽ Stesen Minyak", callback_data="loc_search:petrol"),
+            InlineKeyboardButton("🛠️ Hardware", callback_data="loc_search:hardware")
+        ]
+    ]
+    
+    nav_row = []
+    if "home" in places:
+        h_lat = places["home"]["lat"]
+        h_lon = places["home"]["lon"]
+        nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={h_lat},{h_lon}"
+        nav_row.append(InlineKeyboardButton("🏠 Navigasi Ke Rumah", url=nav_url))
+    if "hq" in places:
+        hq_lat = places["hq"]["lat"]
+        hq_lon = places["hq"]["lon"]
+        nav_url = f"https://www.google.com/maps/dir/?api=1&origin={current_lat},{current_lon}&destination={hq_lat},{hq_lon}"
+        nav_row.append(InlineKeyboardButton("🏢 Navigasi Ke HQ", url=nav_url))
+        
+    if nav_row:
+        keyboard.append(nav_row)
+        
+    return InlineKeyboardMarkup(keyboard)
+
+
 async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
@@ -1429,23 +1528,67 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.edited_message:
         logger.info(f"Quietly updated live location in database: {address}")
         return
-        
+
     maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+    weather_info = await _get_weather_forecast(lat, lon)
+    reply_markup = _get_location_keyboard(user_id, lat, lon)
         
     reply_text = (
         f"📍 *LOCATION UPDATE;*\n"
         f"───────────────\n\n"
         f"🏢 *Alamat Semasa*:\n`{address}`\n\n"
         f"📌 *Koordinat GPS*:\n`{lat}, {lon}`\n\n"
+        f"🌤️ *Ramalan Cuaca Hari Ini*:\n{weather_info}\n\n"
         f"🗺️ *Pautan Peta*:\n[Buka Dalam Google Maps]({maps_url})\n\n"
-        f"💡 *Cadangan Soalan*:\n"
-        f"• 🍽️ *\"Kedai makan sedap terdekat?\"*\n"
-        f"• 🛒 *\"Kedai runcit/hardware terdekat?\"*\n"
-        f"• 📍 *\"Saya kat mana sekarang?\"*\n\n"
         f"───────────────\n"
-        f"✨ *AURA sedia bantu Matrol mengikut lokasi ini!*"
+        f"💡 *Pilihan Pantas (Tekan butang di bawah)*:"
     )
-    await _send_telegram_msg(update, reply_text, parse_mode="Markdown")
+    
+    import html
+    escaped = html.escape(reply_text)
+    escaped = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", escaped)
+    escaped = re.sub(r"\*(.*?)\*", r"<b>\1</b>", escaped)
+    escaped = re.sub(r"`(.*?)`", r"<code>\1</code>", escaped)
+    escaped = re.sub(r"\[(.*?)\]\((https?://.*?)\)", r'<a href="\2">\1</a>', escaped)
+    
+    thread_id = getattr(update.message, "message_thread_id", None) if update.message else None
+    await update.message.reply_text(escaped, parse_mode="HTML", reply_markup=reply_markup, message_thread_id=thread_id)
+
+
+async def sethome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    import memory
+    loc = memory.get_user_location(user_id)
+    if not loc:
+        await update.message.reply_text("⚠️ Sila hantar lokasi (location pin) anda di Telegram terlebih dahulu sebelum menanda tempat Rumah.")
+        return
+    memory.save_user_place(user_id, "home", loc["latitude"], loc["longitude"], loc["address"])
+    await update.message.reply_text(
+        f"🏠 *LOKASI RUMAH BERJAYA DISIMPAN!*\n"
+        f"───────────────\n\n"
+        f"• *Alamat*: `{loc['address']}`\n"
+        f"• *Koordinat*: `{loc['latitude']}, {loc['longitude']}`\n\n"
+        f"Kini setiap kali anda menghantar lokasi di Telegram, butang *[🏠 Navigasi Ke Rumah]* akan dipaparkan secara automatik!",
+        parse_mode="Markdown"
+    )
+
+
+async def sethq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    import memory
+    loc = memory.get_user_location(user_id)
+    if not loc:
+        await update.message.reply_text("⚠️ Sila hantar lokasi (location pin) anda di Telegram terlebih dahulu sebelum menanda HQ Sakluma.")
+        return
+    memory.save_user_place(user_id, "hq", loc["latitude"], loc["longitude"], loc["address"])
+    await update.message.reply_text(
+        f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n"
+        f"───────────────\n\n"
+        f"• *Alamat*: `{loc['address']}`\n"
+        f"• *Koordinat*: `{loc['latitude']}, {loc['longitude']}`\n\n"
+        f"Kini setiap kali anda menghantar lokasi di Telegram, butang *[🏢 Navigasi Ke HQ]* akan dipaparkan secara automatik!",
+        parse_mode="Markdown"
+    )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1716,6 +1859,10 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(CommandHandler("confirm", confirm_command))
+    application.add_handler(CommandHandler("sethome", sethome_command))
+    application.add_handler(CommandHandler("setrumah", sethome_command))
+    application.add_handler(CommandHandler("sethq", sethq_command))
+    application.add_handler(CommandHandler("setoffice", sethq_command))
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, handle_location))
