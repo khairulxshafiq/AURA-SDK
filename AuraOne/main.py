@@ -407,7 +407,7 @@ def _send_safe_message(text: str, max_length: int = 4000) -> str:
     return text
 
 
-async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
+async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, reply_markup=None):
     """Send Telegram message with markdown support, automatically falling back to plain text if parsing fails."""
     target_parse_mode = parse_mode
     target_text = text
@@ -440,16 +440,16 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
 
     try:
         if update.message:
-            await update.message.reply_text(target_text, parse_mode=target_parse_mode, message_thread_id=thread_id)
+            await update.message.reply_text(target_text, parse_mode=target_parse_mode, reply_markup=reply_markup, message_thread_id=thread_id)
         elif update.callback_query and update.callback_query.message:
-            await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode, message_thread_id=thread_id)
+            await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode, reply_markup=reply_markup, message_thread_id=thread_id)
     except BadRequest as e:
         logger.warning(f"Telegram parse mode {target_parse_mode} failed. Falling back to plain text. Error: {e}")
         try:
             if update.message:
-                await update.message.reply_text(text, message_thread_id=thread_id)
+                await update.message.reply_text(text, reply_markup=reply_markup, message_thread_id=thread_id)
             elif update.callback_query and update.callback_query.message:
-                await update.callback_query.message.reply_text(text, message_thread_id=thread_id)
+                await update.callback_query.message.reply_text(text, reply_markup=reply_markup, message_thread_id=thread_id)
         except Exception as fallback_err:
             logger.error(f"Fallback text send failed: {fallback_err}")
 
