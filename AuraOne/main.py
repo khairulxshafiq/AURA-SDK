@@ -846,21 +846,34 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             
             def _extract_city_area(address: str) -> str:
                 if not address:
-                    return "Selangor"
+                    return "Malaysia"
                 parts = [p.strip() for p in address.split(",")]
+                
+                # Check for major Malaysian cities/states
                 for part in parts:
                     p_lower = part.lower()
-                    if any(c in p_lower for c in ["shah alam", "petaling jaya", "subang jaya", "klang", "puchong", "cyberjaya", "putrajaya", "kuala lumpur", "kajang", "bangi", "ampang", "cheras", "rawang", "selangor"]):
+                    if any(c in p_lower for c in [
+                        "kuala lumpur", "seremban", "port dickson", "negeri sembilan", 
+                        "shah alam", "petaling jaya", "subang jaya", "klang", "puchong", 
+                        "cyberjaya", "putrajaya", "kajang", "bangi", "melaka", "johor bahru", 
+                        "ipoh", "georgetown", "penang", "kuantan", "kota bharu", "kuala terengganu", 
+                        "alor setar", "kangar", "kota kinabalu", "kuching", "selangor"
+                    ]):
                         return part
-                if len(parts) >= 3:
-                    return parts[-3]
+
+                # Fallback clean parts
+                cleaned = [p for p in parts if not p.isdigit() and p.lower() not in ["malaysia", "singapore", "thailand"]]
+                if len(cleaned) >= 2:
+                    return f"{cleaned[-2]}, {cleaned[-1]}"
+                elif cleaned:
+                    return cleaned[0]
                 return address
 
             city_area = _extract_city_area(loc["address"])
             await query.message.reply_text(f"🔍 Mengumpul senarai event & aktiviti terkini di kawasan *{city_area}*...", parse_mode="Markdown")
             
             from tools import search_web
-            search_query = f"event acara aktiviti terkini {city_area} selangor 2026"
+            search_query = f"event acara pesta aktiviti terkini {city_area} 2026"
             search_res = search_web(search_query)
             
             formatted_results = ""
