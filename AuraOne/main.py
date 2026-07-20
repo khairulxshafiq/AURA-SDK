@@ -2222,21 +2222,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     status_msg = None
     gemini_success = False
 
-    # Only show popup status message if task takes longer than 3.0 seconds (e.g. web search / scraping)
-    async def _show_status_if_delayed(delay: float = 3.0):
+    # Only show popup status message if task takes longer than 5.0 seconds (genuinely long waiting time)
+    async def _show_status_if_delayed(delay: float = 5.0):
         nonlocal status_msg
         await asyncio.sleep(delay)
         if not gemini_success and not status_msg:
             try:
                 status_msg = await update.message.reply_text(
-                    f"⏳ *AURA sedang memproses carian/analisis...*\n"
-                    f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`",
+                    f"⏳ *AURA sedang memproses carian/analisis...*",
                     parse_mode="Markdown"
                 )
             except Exception as st_err:
                 logger.warning(f"Could not send delayed status msg: {st_err}")
 
-    delayed_status_task = asyncio.create_task(_show_status_if_delayed(3.0))
+    delayed_status_task = asyncio.create_task(_show_status_if_delayed(5.0))
 
     conv_id = _get_conv_id_for_user(user_id)
     response_text = ""
@@ -2268,14 +2267,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 try:
                     if status_msg:
                         await status_msg.edit_text(
-                            f"⏳ *Menukar ke Kunci API [F{current_key_idx + 1}]...*\n"
-                            f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`",
+                            f"⏳ *Menukar kunci API [F{current_key_idx + 1}]...*",
                             parse_mode="Markdown"
                         )
                     else:
                         status_msg = await update.message.reply_text(
-                            f"⏳ *Menukar ke Kunci API [F{current_key_idx + 1}]...*\n"
-                            f"📡 *Kunci API*: `[F{current_key_idx + 1}] gemini-2.5-flash`",
+                            f"⏳ *Menukar kunci API [F{current_key_idx + 1}]...*",
                             parse_mode="Markdown"
                         )
                 except Exception:
@@ -2320,8 +2317,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
             else:
                 clean = _clean_response(response_text)
-                prefix = f"[F{current_key_idx + 1}] gemini-2.5-flash\n\n"
-                final_text = _send_safe_message(f"{prefix}{clean}")
+                final_text = _send_safe_message(clean)
                 await _send_telegram_msg(update, final_text, parse_mode="Markdown")
             return
 
@@ -2329,9 +2325,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.warning(f"[Gemini] All {num_keys} keys rate limited. Switching to OpenRouter...")
         
         status_msg = await update.message.reply_text(
-            f"⏳ *Menukar ke OpenRouter Fallback Proxy...*\n"
-            f"📡 *Model*: `[P1] {OPENROUTER_FALLBACK_MODEL}`\n"
-            f"🔍 *Status*: Memproses carian...",
+            f"⏳ *Menukar ke OpenRouter Fallback Proxy...*",
             parse_mode="Markdown"
         )
 
@@ -2376,9 +2370,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await _send_telegram_msg(update, final_text, parse_mode="Markdown")
             else:
                 clean = _clean_response(response_text)
-                p_prefix = "P2" if OPENROUTER_FALLBACK_MODEL.lower().startswith("openai/") else "P1"
-                prefix = f"[{p_prefix}] {OPENROUTER_FALLBACK_MODEL}\n\n"
-                final_text = _send_safe_message(f"{prefix}{clean}")
+                final_text = _send_safe_message(clean)
                 await _send_telegram_msg(update, final_text, parse_mode="Markdown")
 
         except Exception as or_err:
