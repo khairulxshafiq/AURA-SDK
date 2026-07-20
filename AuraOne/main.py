@@ -1433,7 +1433,7 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
         
     reply_text = (
-        f"📍 *LOKASI BOSS BERJAYA DIKEMASKINI*\n"
+        f"📍 *LOCATION UPDATE;*\n"
         f"───────────────\n\n"
         f"🏢 *Alamat Semasa*:\n`{address}`\n\n"
         f"📌 *Koordinat GPS*:\n`{lat}, {lon}`\n\n"
