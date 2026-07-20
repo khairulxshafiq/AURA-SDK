@@ -419,8 +419,12 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None):
         # Escape HTML characters first
         escaped = html.escape(text)
         
-        # Convert **bold** to <b>bold</b>
+        # Convert **bold** and *bold* to <b>bold</b>
         escaped = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", escaped)
+        escaped = re.sub(r"\*(.*?)\*", r"<b>\1</b>", escaped)
+        
+        # Convert `code` to <code>code</code>
+        escaped = re.sub(r"`(.*?)`", r"<code>\1</code>", escaped)
         
         # Convert [text](url) to <a href="url">text</a>
         escaped = re.sub(r"\[(.*?)\]\((https?://.*?)\)", r'<a href="\2">\1</a>', escaped)
@@ -1426,11 +1430,20 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Quietly updated live location in database: {address}")
         return
         
+    maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+        
     reply_text = (
-        f"📍 *Lokasi boss berjaya dikemaskini!*\n\n"
-        f"• *Alamat*: {address}\n"
-        f"• *Koordinat*: `{lat}, {lon}`\n\n"
-        f"Sekarang AURA tahu boss berada di sini. Boss boleh tanya AURA tentang tempat menarik, kedai makan, barang/perkhidmatan berdekatan, atau tanya *\"Saya dekat mana sekarang?\"*! 🗺️"
+        f"📍 *LOKASI BOSS BERJAYA DIKEMASKINI*\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🏢 *Alamat Semasa*:\n`{address}`\n\n"
+        f"📌 *Koordinat GPS*:\n`{lat}, {lon}`\n\n"
+        f"🗺️ *Pautan Peta*:\n[Buka Dalam Google Maps]({maps_url})\n\n"
+        f"💡 *Cadangan Soalan*:\n"
+        f"• 🍽️ *\"Kedai makan sedap terdekat?\"*\n"
+        f"• 🛒 *\"Kedai runcit/hardware terdekat?\"*\n"
+        f"• 📍 *\"Saya kat mana sekarang?\"*\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"✨ *AURA sedia bantu Matrol mengikut lokasi ini!*"
     )
     await _send_telegram_msg(update, reply_text, parse_mode="Markdown")
 
