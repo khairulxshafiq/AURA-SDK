@@ -121,7 +121,10 @@
   * Added 1-day statistical weather forecast (Pagi, Petang, Malam with temperature & rain probability) integrated directly into Telegram location update card via Open-Meteo API.
   * Implemented location quick-search inline keyboard buttons (`[🍽️ Makan Best]`, `[☕ Cafe Lepak]`, `[⛽ Stesen Minyak]`, `[🛠️ Hardware]`) to trigger direct nearby web/location searches upon click.
   * Added `/sethome` (or `/setrumah`) and `/sethq` (or `/setoffice`) commands with SQLite persistent storage (`user_saved_places`), automatically rendering direct Google Maps navigation buttons (`[🚗 Ke Rumah]`, `[🏎️ Ke HQ]`) whenever location updates are shared.
-  * Added direct inline action buttons (`[🏠 Set Rumah]`, `[🏢 Set HQ]`, `[🌤️ Cuaca 7 Hari]`) to location update card, allowing one-tap place marking and 7-day extended weather forecast generation directly without typing commands.
+  * Converted nearby search buttons (`[🍽️ Makan Best]`, `[☕ Cafe Lepak]`, `[⛽ Stesen Minyak]`, `[🛠️ Hardware]`) and saved place buttons (`[🏠 Home]`, `[🏢 Work]`) into direct Google Maps URLs for instant opening in mobile app/browser without bot latency.
+  * Replaced Weather button with `[🎉 Events]` button. Integrated AI Gemini parsing to extract live local events/activities for any Malaysian city/state (KL, Selangor, N. Sembilan, etc.) and format them chronologically by date (`📅 Tarikh`, `📍 Lokasi`, `📝 Penerangan`, `🔗 Pautan`).
+  * Fixed callback handler guard ordering in `handle_callback_query` so location callbacks execute independently without requiring active content drafts.
+
 
 
 
