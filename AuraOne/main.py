@@ -415,20 +415,39 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, 
     if parse_mode in ["Markdown", "MarkdownV2", "markdown", "markdownv2"]:
         import re
         import html
-        
-        # Escape HTML characters first
-        escaped = html.escape(text)
-        
+
+        placeholder_map = {}
+        counter = 0
+
+        def store_link(match):
+            nonlocal counter
+            key = f"___LINK_PLACEHOLDER_{counter}___"
+            counter += 1
+            link_text = html.escape(match.group(1))
+            url = match.group(2)
+            placeholder_map[key] = f'<a href="{url}">{link_text}</a>'
+            return key
+
+        # Store markdown links first to prevent HTML escaping from corrupting URLs
+        text_with_placeholders = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", store_link, text)
+
+        # Escape general HTML characters
+        escaped = html.escape(text_with_placeholders)
+
+        # Restore link placeholders
+        for key, val in placeholder_map.items():
+            escaped = escaped.replace(key, val)
+
         # Convert **bold** and *bold* to <b>bold</b>
         escaped = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", escaped)
         escaped = re.sub(r"\*(.*?)\*", r"<b>\1</b>", escaped)
-        
+
+        # Convert _italic_ to <i>italic</i>
+        escaped = re.sub(r"_(.*?)_", r"<i>\1</i>", escaped)
+
         # Convert `code` to <code>code</code>
         escaped = re.sub(r"`(.*?)`", r"<code>\1</code>", escaped)
-        
-        # Convert [text](url) to <a href="url">text</a>
-        escaped = re.sub(r"\[(.*?)\]\((https?://.*?)\)", r'<a href="\2">\1</a>', escaped)
-        
+
         target_text = escaped
         target_parse_mode = "HTML"
 
