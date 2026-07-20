@@ -120,7 +120,9 @@
   * Redesigned Telegram location response format into a premium structured card featuring monospace codeblocks for address & GPS coordinates, direct Google Maps link integration, and quick-prompt suggestions. Upgraded `_send_telegram_msg` parser to support HTML codeblock conversion.
   * Added 1-day statistical weather forecast (Pagi, Petang, Malam with temperature & rain probability) integrated directly into Telegram location update card via Open-Meteo API.
   * Implemented location quick-search inline keyboard buttons (`[🍽️ Makan Best]`, `[☕ Cafe Lepak]`, `[⛽ Stesen Minyak]`, `[🛠️ Hardware]`) to trigger direct nearby web/location searches upon click.
-  * Added `/sethome` (or `/setrumah`) and `/sethq` (or `/setoffice`) commands with SQLite persistent storage (`user_saved_places`), automatically rendering direct Google Maps navigation buttons (`[🏠 Navigasi Ke Rumah]`, `[🏢 Navigasi Ke HQ]`) whenever location updates are shared.
+  * Added `/sethome` (or `/setrumah`) and `/sethq` (or `/setoffice`) commands with SQLite persistent storage (`user_saved_places`), automatically rendering direct Google Maps navigation buttons (`[🚗 Ke Rumah]`, `[🏎️ Ke HQ]`) whenever location updates are shared.
+  * Added direct inline action buttons (`[🏠 Set Rumah]`, `[🏢 Set HQ]`, `[🌤️ Cuaca 7 Hari]`) to location update card, allowing one-tap place marking and 7-day extended weather forecast generation directly without typing commands.
+
 
 
 
