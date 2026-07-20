@@ -1564,6 +1564,12 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
     else:
         work_btn = InlineKeyboardButton("🏢 Set Work", callback_data="loc_action:set_hq")
 
+    # Direct Google Maps Nearby Search URLs
+    makan_url = f"https://www.google.com/maps/search/Kedai+Makan+Sedap/@{current_lat},{current_lon},15z"
+    cafe_url = f"https://www.google.com/maps/search/Cafe/@{current_lat},{current_lon},15z"
+    petrol_url = f"https://www.google.com/maps/search/Stesen+Minyak/@{current_lat},{current_lon},15z"
+    hardware_url = f"https://www.google.com/maps/search/Kedai+Hardware/@{current_lat},{current_lon},15z"
+
     keyboard = [
         [
             home_btn,
@@ -1571,12 +1577,12 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
             InlineKeyboardButton("🌤️ Weather", callback_data="loc_action:weather_full")
         ],
         [
-            InlineKeyboardButton("🍽️ Makan Best", callback_data="loc_search:makan"),
-            InlineKeyboardButton("☕ Cafe Lepak", callback_data="loc_search:cafe"),
+            InlineKeyboardButton("🍽️ Makan Best", url=makan_url),
+            InlineKeyboardButton("☕ Cafe Lepak", url=cafe_url),
         ],
         [
-            InlineKeyboardButton("⛽ Stesen Minyak", callback_data="loc_search:petrol"),
-            InlineKeyboardButton("🛠️ Hardware", callback_data="loc_search:hardware")
+            InlineKeyboardButton("⛽ Stesen Minyak", url=petrol_url),
+            InlineKeyboardButton("🛠️ Hardware", url=hardware_url)
         ]
     ]
         
