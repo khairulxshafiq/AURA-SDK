@@ -2079,6 +2079,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_chat_action(chat_id=chat_id, action="typing")
             telegram_file = await context.bot.get_file(photo.file_id)
+            file_bytearray = await telegram_file.download_as_bytearray()
             img_bytes = bytes(file_bytearray)
             
             # Fast Image Optimization for 3x faster Multimodal Vision AI processing
