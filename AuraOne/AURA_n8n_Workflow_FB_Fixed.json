@@ -1,0 +1,874 @@
+{
+  "id": "qbOJJ5lJ3ybq6iqx",
+  "name": "AURA Content Engine - Research & Auto-Poster",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Flow 3+4: Auto-Posting & Repurposing",
+        "height": 1204,
+        "width": 1740,
+        "color": 1
+      },
+      "id": "e5bf2846-7844-4c8b-882b-160230af6a1a",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1616,
+        656
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "resource": "tweet",
+        "operation": "create",
+        "text": "={{ $json.fields['New Post'] }}",
+        "additionalFields": {}
+      },
+      "id": "e9dd0feb-8b59-48b5-bcd6-1d08ed6fde96",
+      "name": "X",
+      "type": "n8n-nodes-base.twitter",
+      "position": [
+        -1584,
+        448
+      ],
+      "typeVersion": 2,
+      "credentials": {
+        "twitterOAuth2Api": {
+          "id": "YhsQT2AInXzrQyGD",
+          "name": "X OAuth2 account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "authentication": "standard",
+        "resource": "post",
+        "operation": "create",
+        "postAs": "person",
+        "person": "nY1EvjMSIJ",
+        "text": "={{ $('Approved Trigger').item.json.fields['New Caption'] }}",
+        "shareMediaCategory": "IMAGE",
+        "binaryPropertyName": "data",
+        "additionalFields": {}
+      },
+      "id": "c20a32c7-868d-47ac-8cd4-8b0e8946bf9b",
+      "name": "LinkedIn",
+      "type": "n8n-nodes-base.linkedIn",
+      "position": [
+        -1584,
+        896
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "linkedInOAuth2Api": {
+          "id": "kVZobOOUIG4MXgmH",
+          "name": "LinkedIn account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "curlImport": "",
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/28087964647495659/threads_publish",
+        "authentication": "none",
+        "provideSslCertificates": false,
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "creation_id",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "name": "access_token",
+              "value": "THAAWB0fZBdv5FBYmFWcmJ6czNVNVZAhWUZAOdXVsWWpkamlrYzh0VzdwSGZAidmFKc050dk45bngwWXlmV0t1LTc0dTlrb3RZAQXZAtMW5NX3g2UGttSVpSa1JmUS1iZAlpmLWFPZA2ppVFowUzI3ckd6OTBYUUp3bm42bEctY2F0SVRkTkV3VENDQlJqSTJ1REdjclZAsUnlMekZAGaFJ0QWxJd0hjd0ZAMRUgZD"
+            }
+          ]
+        },
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {},
+        "infoMessage": ""
+      },
+      "id": "31f48749-de65-4fd8-a595-b648782e5732",
+      "name": "Threads",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -464,
+        1488
+      ],
+      "retryOnFail": true,
+      "typeVersion": 4.3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "authentication": "airtableTokenApi",
+        "baseId": {
+          "__rl": true,
+          "value": "appX8Ug5r1DgckMwx",
+          "mode": "id"
+        },
+        "tableId": {
+          "__rl": true,
+          "value": "tbl0YLPzsfneGd0Xb",
+          "mode": "id"
+        },
+        "triggerField": "Last Modified Time",
+        "downloadAttachments": false,
+        "additionalFields": {
+          "formula": "{Status} = \"Approved\""
+        }
+      },
+      "id": "2c7a74f4-be2a-4940-9e6e-e4e43f1a1e2f",
+      "name": "Approved Trigger",
+      "type": "n8n-nodes-base.airtableTrigger",
+      "position": [
+        -1584,
+        1264
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "vVxnyy21DVoBFgf5",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "airtableTokenApi",
+        "resource": "record",
+        "operation": "update",
+        "base": {
+          "__rl": true,
+          "value": "appX8Ug5r1DgckMwx",
+          "mode": "id"
+        },
+        "table": {
+          "__rl": true,
+          "value": "tbl0YLPzsfneGd0Xb",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Post Status": "Posted"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Post Status",
+              "type": "string",
+              "display": true,
+              "removed": false,
+              "readOnly": false,
+              "displayName": "Post Status"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "79c6b2b4-2303-4f1d-97af-2f01cfa3bcbe",
+      "name": "Mark as Posted",
+      "type": "n8n-nodes-base.airtable",
+      "position": [
+        -16,
+        1264
+      ],
+      "typeVersion": 2.1,
+      "credentials": {
+        "airtableTokenApi": {
+          "id": "vVxnyy21DVoBFgf5",
+          "name": "Airtable account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authType": "accessToken",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v23.0",
+        "node": "17841462646273569",
+        "edge": "media_publish",
+        "allowUnauthorizedCerts": false,
+        "sendBinaryData": false,
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              {
+                "name": "creation_id",
+                "value": "={{ $json.id }}"
+              }
+            ]
+          }
+        }
+      },
+      "id": "602c26fe-20b9-4953-b513-012b776f317e",
+      "name": "Instagram",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "position": [
+        -1136,
+        1712
+      ],
+      "retryOnFail": true,
+      "typeVersion": 1,
+      "waitBetweenTries": 5000,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "t40ZjjOoRmD3wGPZ",
+          "name": "FB: Sakluma.Ori"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "bb58d070-1335-4408-97d7-284bfdff6a6a",
+      "name": "Wait 5s",
+      "type": "n8n-nodes-base.wait",
+      "position": [
+        -688,
+        1488
+      ],
+      "webhookId": "2e889069-656d-4578-b2ec-a5943b52f08c",
+      "typeVersion": 1.1
+    },
+    {
+      "parameters": {
+        "curlImport": "",
+        "method": "POST",
+        "url": "https://graph.threads.net/v1.0/28087964647495659/threads",
+        "authentication": "none",
+        "provideSslCertificates": false,
+        "sendQuery": true,
+        "specifyQuery": "keypair",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "media_type",
+              "value": "={{ $json.fields['Image file'] ? 'IMAGE' : 'TEXT' }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.fields['Caption'] }}"
+            },
+            {
+              "name": "image_url",
+              "value": "={{ $json.fields['Image file'] ? $json.fields['Image file'][0].url : '' }}"
+            },
+            {
+              "name": "access_token",
+              "value": "THAAWB0fZBdv5FBYmFWcmJ6czNVNVZAhWUZAOdXVsWWpkamlrYzh0VzdwSGZAidmFKc050dk45bngwWXlmV0t1LTc0dTlrb3RZAQXZAtMW5NX3g2UGttSVpSa1JmUS1iZAlpmLWFPZA2ppVFowUzI3ckd6OTBYUUp3bm42bEctY2F0SVRkTkV3VENDQlJqSTJ1REdjclZAsUnlMekZAGaFJ0QWxJd0hjd0ZAMRUgZD"
+            }
+          ]
+        },
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {},
+        "infoMessage": ""
+      },
+      "id": "ef49b2eb-c542-40d7-9e35-1173dd8afb15",
+      "name": "Threads Container",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -912,
+        1488
+      ],
+      "typeVersion": 4.3
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "ebd354d7-a628-47d5-9e2e-163dbd0cc70e",
+      "name": "Wait 5 sec",
+      "type": "n8n-nodes-base.wait",
+      "position": [
+        -1360,
+        1712
+      ],
+      "webhookId": "4302bb2a-3fff-4886-b96a-5bcfe0585e4d",
+      "typeVersion": 1.1,
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "authType": "accessToken",
+        "hostUrl": "graph.facebook.com",
+        "httpRequestMethod": "POST",
+        "graphApiVersion": "v23.0",
+        "node": "17841462646273569",
+        "edge": "media",
+        "allowUnauthorizedCerts": false,
+        "sendBinaryData": false,
+        "options": {
+          "queryParameters": {
+            "parameter": [
+              {
+                "name": "image_url",
+                "value": "={{ $('Upload Image').item.json.data.image.url }}"
+              },
+              {
+                "name": "caption",
+                "value": "={{ $('Approved Trigger').item.json.fields['New Caption'] }}"
+              },
+              {
+                "name": "node",
+                "value": "=17841462646273569"
+              }
+            ]
+          }
+        }
+      },
+      "id": "3e751cbd-2b85-47ed-bf46-1dd4566aaa34",
+      "name": "Instagram Container",
+      "type": "n8n-nodes-base.facebookGraphApi",
+      "position": [
+        -1584,
+        1712
+      ],
+      "typeVersion": 1,
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "t40ZjjOoRmD3wGPZ",
+          "name": "FB: Sakluma.Ori"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "content": "### 4. Approval Trigger & Image Generation\n\nThe publishing sequence is completely controlled by you.\n\n* An Airtable trigger listens for any record where **Status = Approved**.\n* Once triggered, an OpenAI image node generates a dark-mode text graphic of your short post.\n* The image is uploaded to ImgBB to create a shareable URL for social platforms.",
+        "height": 240,
+        "width": 448,
+        "color": 7
+      },
+      "id": "edb041dd-d40d-4f98-88aa-6ea2de2544a0",
+      "name": "Sticky Note6",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -1232,
+        1712
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "### 5. Publish Text to X and Threads\n\nYour short-form post is sent to text-first platforms:\n\n* X (Twitter) via the native node\n* Threads via an HTTP request (using n8n's secure credential manager)",
+        "height": 192,
+        "width": 454,
+        "color": 6
+      },
+      "id": "7c85b19b-d874-42ff-9bf4-d651a9d8d908",
+      "name": "Sticky Note7",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        432,
+        976
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "content": "### 6. Publish Visuals to LinkedIn, Facebook & Instagram\nThe hosted AI image + your long-form caption are posted to:\n\n* LinkedIn\n* Facebook\n* Instagram (using a container + publish sequence via Facebook Graph API)\n\nOnce all platforms are successfully published, the Airtable record is updated to \"Posted.\"",
+        "height": 304,
+        "width": 358,
+        "color": 4
+      },
+      "id": "3f90b377-9b3c-4fc4-9a88-ce769222f54a",
+      "name": "Sticky Note8",
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        432,
+        1504
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v20.0/708376072366250/photos",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "caption",
+              "value": "={{ $node[\"Approved Trigger\"].json.fields[\"Caption\"] }}"
+            },
+            {
+              "name": "url",
+              "value": "={{ $node[\"Approved Trigger\"].json.fields[\"Image file\"] ? $node[\"Approved Trigger\"].json.fields[\"Image file\"][0][\"url\"] : ($node[\"Approved Trigger\"].json.fields[\"Gambar\"] ? $node[\"Approved Trigger\"].json.fields[\"Gambar\"][0][\"url\"] : \"\") }}"
+            },
+            {
+              "name": "access_token",
+              "value": "EAAjUK89ltOwBR1YIZAEL5qV8IAWRXLalP6PBScraKnnvrkt0WSeT51ZAzL41XaCEZBTC3kfZCPFWDuNcXWS0NfzzmnYc4Po3OYc5iGHQmvNvUdrAnX0iWCKFEywysgBjCtEyYc83SiRJpVRO9KdFOPyPxZC2ZASmIqz3R0mKvNclawuFgn0OEhWIjjgg0mijK6t7c8"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -912,
+        1100
+      ],
+      "id": "facebook-http-post-node-id",
+      "name": "FaceBook Post (Photo)",
+      "credentials": {
+        "facebookGraphApi": {
+          "id": "t40ZjjOoRmD3wGPZ",
+          "name": "FB: Sakluma.Ori"
+        }
+      },
+      "disabled": false
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "6b27bf4b-b3d1-40ed-a0c8-85503cd27954",
+              "name": "access_token",
+              "value": "THAAWB0fZBdv5FBYmFWcmJ6czNVNVZAhWUZAOdXVsWWpkamlrYzh0VzdwSGZAidmFKc050dk45bngwWXlmV0t1LTc0dTlrb3RZAQXZAtMW5NX3g2UGttSVpSa1JmUS1iZAlpmLWFPZA2ppVFowUzI3ckd6OTBYUUp3bm42bEctY2F0SVRkTkV3VENDQlJqSTJ1REdjclZAsUnlMekZAGaFJ0QWxJd0hjd0ZAMRUgZD",
+              "type": "string"
+            },
+            {
+              "id": "81e14e54-44be-45a3-9755-59f37c5419d6",
+              "name": "client_secret",
+              "value": "94eb1a6dd3b1bd7ffdd8fef371119ef6",
+              "type": "string"
+            },
+            {
+              "id": "b84f980d-6537-48a2-8369-99332cda5159",
+              "name": "account_id",
+              "value": "sakluma.ori",
+              "type": "string"
+            },
+            {
+              "id": "23fdc010-b648-4dcd-9b92-236a3381f683",
+              "name": "threads_id",
+              "value": "28087964647495659",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1584,
+        672
+      ],
+      "id": "85bcfda8-25a7-4c73-ba20-c5e119b25f1e",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "curlImport": "",
+        "method": "GET",
+        "url": "=https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret={{ $json.client_secret }}&access_token={{ $json.access_token }}",
+        "authentication": "none",
+        "provideSslCertificates": false,
+        "sendQuery": false,
+        "sendHeaders": false,
+        "sendBody": false,
+        "options": {},
+        "infoMessage": ""
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        -1360,
+        672
+      ],
+      "id": "3fde9344-c692-4d7f-8580-2ea33a5b4d77",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const platform = $input.item.json.fields.Platform || [];\nreturn {\n  json: {\n    ...$input.item.json,\n    isFacebook: platform.includes('Facebook') ? 'yes' : 'no',\n    isThreads: platform.includes('Threads') ? 'yes' : 'no'\n  },\n  pairedItem: {\n    item: $input.item.index\n  }\n};",
+        "notice": ""
+      },
+      "id": "code-node-filter-id",
+      "name": "Platform Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1360,
+        1264
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.isFacebook }}",
+              "operation": "equal",
+              "value2": "yes"
+            }
+          ]
+        },
+        "combineOperation": "all"
+      },
+      "id": "if-node-facebook-id",
+      "name": "Is Facebook?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -688,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.isThreads }}",
+              "operation": "equal",
+              "value2": "yes"
+            }
+          ]
+        },
+        "combineOperation": "all"
+      },
+      "id": "if-node-threads-id",
+      "name": "Is Threads?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -1136,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "merge-fb-node-id",
+      "name": "Merge Facebook ID",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        1120
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "multiplex",
+        "options": {}
+      },
+      "id": "merge-threads-node-id",
+      "name": "Merge Threads ID",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2.1,
+      "position": [
+        -240,
+        1408
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $node[\"Approved Trigger\"].json.fields[\"Image file\"] ? $node[\"Approved Trigger\"].json.fields[\"Image file\"].length > 0 : ($node[\"Approved Trigger\"].json.fields[\"Gambar\"] ? $node[\"Approved Trigger\"].json.fields[\"Gambar\"].length > 0 : false) }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-has-image-fb-id",
+      "name": "If Has Image (FB)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -1136,
+        1200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v20.0/708376072366250/feed",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "message",
+              "value": "={{ $node[\"Approved Trigger\"].json.fields[\"Caption\"] }}"
+            },
+            {
+              "name": "access_token",
+              "value": "EAAjUK89ltOwBR1YIZAEL5qV8IAWRXLalP6PBScraKnnvrkt0WSeT51ZAzL41XaCEZBTC3kfZCPFWDuNcXWS0NfzzmnYc4Po3OYc5iGHQmvNvUdrAnX0iWCKFEywysgBjCtEyYc83SiRJpVRO9KdFOPyPxZC2ZASmIqz3R0mKvNclawuFgn0OEhWIjjgg0mijK6t7c8"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "fb-text-node-id",
+      "name": "FaceBook Post (Text)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -912,
+        1300
+      ],
+      "disabled": false
+    }
+  ],
+  "connections": {
+    "X": {
+      "main": [
+        []
+      ]
+    },
+    "Threads": {
+      "main": [
+        [
+          {
+            "node": "Merge Threads ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 5s": {
+      "main": [
+        [
+          {
+            "node": "Threads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "LinkedIn": {
+      "main": [
+        []
+      ]
+    },
+    "Wait 5 sec": {
+      "main": [
+        [
+          {
+            "node": "Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark as Posted": {
+      "main": [
+        []
+      ]
+    },
+    "Approved Trigger": {
+      "main": [
+        [
+          {
+            "node": "Platform Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Threads Container": {
+      "main": [
+        [
+          {
+            "node": "Wait 5s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Instagram Container": {
+      "main": [
+        [
+          {
+            "node": "Wait 5 sec",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        []
+      ]
+    },
+    "Is Facebook?": {
+      "main": [
+        [
+          {
+            "node": "If Has Image (FB)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge Facebook ID",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Is Threads?": {
+      "main": [
+        [
+          {
+            "node": "Threads Container",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Threads ID",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Platform Filter": {
+      "main": [
+        [
+          {
+            "node": "Is Facebook?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Is Threads?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Facebook ID": {
+      "main": [
+        [
+          {
+            "node": "Mark as Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Threads ID": {
+      "main": [
+        [
+          {
+            "node": "Mark as Posted",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Has Image (FB)": {
+      "main": [
+        [
+          {
+            "node": "FaceBook Post (Photo)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "FaceBook Post (Text)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FaceBook Post (Photo)": {
+      "main": [
+        [
+          {
+            "node": "Merge Facebook ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FaceBook Post (Text)": {
+      "main": [
+        [
+          {
+            "node": "Merge Facebook ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "Asia/Singapore",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "nodeGroups": []
+}
