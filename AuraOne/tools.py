@@ -138,10 +138,57 @@ def _scrape_native(url: str, max_content_length: int = 30000) -> dict:
         "url": url
     }
 
+def _scrape_jina(url: str, max_content_length: int = 30000) -> dict:
+    """Scrape using Jina Reader API (free Cloudflare bot-bypass)."""
+    jina_url = f"https://r.jina.ai/{url}"
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+    try:
+        with httpx.Client(timeout=20, follow_redirects=True) as client:
+            resp = client.get(jina_url, headers=headers)
+            resp.raise_for_status()
+            text = resp.text
+
+        title = ""
+        title_m = re.search(r"^Title:\s*(.+)$", text, re.MULTILINE)
+        if title_m:
+            title = title_m.group(1).strip()
+
+        images = re.findall(r"!\[.*?\]\((https?://[^\s\)]+)\)", text)
+        images = [img for img in images if any(ext in img.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"])]
+
+        content = text
+        if len(content) > max_content_length:
+            content = content[:max_content_length]
+
+        return {
+            "status": "success",
+            "tier": "jina",
+            "title": title or "Scraped Article",
+            "content": content,
+            "images": images[:3],
+            "links": [],
+            "url": url
+        }
+    except Exception as e:
+        return {"status": "error", "tier": "jina", "error": str(e)}
+
 def scrape_url(url: str, max_content_length: int = 30000) -> dict:
     """Scrape a web page URL and return its title, main content, images, and links.
-    Automatically tries Firecrawl (bot-bypass) first, falls back to native scraper.
+    Automatically un-wraps Google News RSS redirect links, tries Firecrawl (bot-bypass) first, falls back to native scraper, then Jina Cloudflare bypass.
     """
+    if "news.google.com" in url:
+        try:
+            from googlenewsdecoder import gnewsdecoder
+            res = gnewsdecoder(url)
+            if isinstance(res, dict) and res.get("status") and res.get("decoded_url"):
+                unwrapped_url = res["decoded_url"]
+                logger.info(f"[GoogleNewsDecoder] Unwrapped {url[:60]}... -> {unwrapped_url}")
+                url = unwrapped_url
+        except Exception as dec_err:
+            logger.warning(f"[GoogleNewsDecoder] Failed to decode Google News URL: {dec_err}")
+
     firecrawl_enabled = os.environ.get("FIRECRAWL_ENABLED", "false").lower() == "true"
     firecrawl_key = os.environ.get("FIRECRAWL_API_KEY", "")
 
@@ -155,7 +202,13 @@ def scrape_url(url: str, max_content_length: int = 30000) -> dict:
 
     # TIER 2: Native scraper fallback
     logger.info(f"[TIER 2] Scraping natively: {url}")
-    return _scrape_native(url, max_content_length)
+    result = _scrape_native(url, max_content_length)
+    if result["status"] == "success" and len(result.get("content", "")) > 100:
+        return result
+
+    # TIER 3: Jina Reader Cloudflare Bypass
+    logger.info(f"[TIER 3] Native scraper hit bot protection or empty content. Scraping via Jina Reader: {url}")
+    return _scrape_jina(url, max_content_length)
 
 def search_web(query: str, num_results: int = 5) -> dict:
     """Search the web for a given query and return top results with titles, links, and snippets.
