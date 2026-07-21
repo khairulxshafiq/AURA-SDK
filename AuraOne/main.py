@@ -2298,8 +2298,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gemini_success = True
             break
         except Exception as gemini_err:
-            logger.warning(f"[Gemini] Key index {current_key_idx} error: {gemini_err}. Putting on 3-min cooldown and rotating...")
-            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 180.0))
+            err_str = str(gemini_err)
+            if "429" in err_str:
+                logger.warning(f"[Gemini] Key index {current_key_idx} hit 429 Rate Limit. Putting on 10-min cooldown and rotating...")
+                memory.update_preference(f"cooldown:{active_key}", str(time.time() + 600.0))
+            else:
+                logger.warning(f"[Gemini] Key index {current_key_idx} error: {gemini_err}. Rotating...")
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
 
@@ -2312,7 +2316,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
         else:
             clean = _clean_response(response_text)
-            final_text = _send_safe_message(clean)
+            final_text = _send_safe_message(f"[F{current_key_idx + 1}] google/gemini-2.5-flash\n\n{clean}")
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         return
 
@@ -2351,7 +2355,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         else:
             clean = _clean_response(response_text)
-            final_text = _send_safe_message(clean)
+            final_text = _send_safe_message(f"[P1] {OPENROUTER_FALLBACK_MODEL}\n\n{clean}")
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
 
     except Exception as or_err:

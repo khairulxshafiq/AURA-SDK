@@ -55,7 +55,7 @@ def init_db():
     """)
     
     # Recreate drafts table with support for active platform draft selections and interactive state
-    cursor.execute("DROP TABLE IF EXISTS drafts")
+    # cursor.execute("DROP TABLE IF EXISTS drafts") # Removed to prevent data loss on restart
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS drafts (

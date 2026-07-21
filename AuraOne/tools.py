@@ -354,7 +354,7 @@ def save_draft_to_airtable(
         "Title": title,
         "Caption": clean_caption,
         "Platform": [plat_name],
-        "Status": status,
+        "Post Status": status,
         "Brand": brand,
         "Content Type": content_type,
         "Created By": created_by,
