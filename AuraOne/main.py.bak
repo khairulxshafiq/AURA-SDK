@@ -409,17 +409,12 @@ def _send_safe_message(text: str, max_length: int = 4000) -> str:
 
 async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, reply_markup=None):
     """Send Telegram message with markdown support, automatically falling back to plain text if parsing fails."""
-    import html as _html_mod
-
     target_parse_mode = parse_mode
     target_text = text
     
-    # If caller already provides HTML content, pass through directly
-    if parse_mode == "HTML":
-        target_parse_mode = "HTML"
-        target_text = text
-    elif parse_mode in ["Markdown", "MarkdownV2", "markdown", "markdownv2"]:
+    if parse_mode in ["Markdown", "MarkdownV2", "markdown", "markdownv2"]:
         import re
+        import html
 
         placeholder_map = {}
         counter = 0
@@ -428,7 +423,7 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, 
             nonlocal counter
             key = f"___LINK_PLACEHOLDER_{counter}___"
             counter += 1
-            link_text = _html_mod.escape(match.group(1))
+            link_text = html.escape(match.group(1))
             url = match.group(2)
             placeholder_map[key] = f'<a href="{url}">{link_text}</a>'
             return key
@@ -437,7 +432,7 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, 
         text_with_placeholders = re.sub(r"\[(.*?)\]\((https?://[^\s\)]+)\)", store_link, text)
 
         # Escape general HTML characters
-        escaped = _html_mod.escape(text_with_placeholders)
+        escaped = html.escape(text_with_placeholders)
 
         # Restore link placeholders
         for key, val in placeholder_map.items():
@@ -468,19 +463,12 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, 
         elif update.callback_query and update.callback_query.message:
             await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode, reply_markup=reply_markup, message_thread_id=thread_id)
     except BadRequest as e:
-        logger.warning(f"Telegram parse mode {target_parse_mode} failed. Falling back. Error: {e}")
-        # Fallback 1: strip ALL HTML/Markdown tags to produce clean plain text (no raw URLs)
-        import re as _re_mod
-        plain = _re_mod.sub(r"<[^>]+>", "", target_text)           # strip HTML tags
-        plain = _re_mod.sub(r"\[(.*?)\]\(https?://[^\s\)]+\)", r"\1", plain)  # strip MD links keeping label
-        plain = _re_mod.sub(r"https?://\S+", "", plain)            # remove any remaining raw URLs
-        plain = _html_mod.unescape(plain)                          # decode &amp; etc
-        plain = _re_mod.sub(r"\n{3,}", "\n\n", plain).strip()
+        logger.warning(f"Telegram parse mode {target_parse_mode} failed. Falling back to plain text. Error: {e}")
         try:
             if update.message:
-                await update.message.reply_text(plain, reply_markup=reply_markup, message_thread_id=thread_id)
+                await update.message.reply_text(text, reply_markup=reply_markup, message_thread_id=thread_id)
             elif update.callback_query and update.callback_query.message:
-                await update.callback_query.message.reply_text(plain, reply_markup=reply_markup, message_thread_id=thread_id)
+                await update.callback_query.message.reply_text(text, reply_markup=reply_markup, message_thread_id=thread_id)
         except Exception as fallback_err:
             logger.error(f"Fallback text send failed: {fallback_err}")
 
@@ -845,35 +833,29 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
         if not articles:
-            await query.message.reply_text("⚠️ Tiada berita terkini dijumpai untuk kategori ini.", parse_mode=None)
+            await query.message.reply_text(f"⚠️ Tiada berita terkini dijumpai untuk kategori `{cat}`.", parse_mode="Markdown")
             return
 
-        import html as _h
         lines = []
         for idx, a in enumerate(articles, start=1):
-            t = _h.escape(a['title'])
-            s = _h.escape(a['source']) if a['source'] else ""
-            d = _h.escape(a['desc'])
-            lnk = a['link']
-            source_str = f" • Sumber: {s}\n" if s else ""
+            source_str = f" • *Sumber*: {a['source']}\n" if a['source'] else ""
             lines.append(
-                f"<b>{idx}. {t}</b>\n"
+                f"*{idx}. {a['title']}*\n"
                 f"{source_str}"
-                f"   • <i>{d}</i>\n"
-                f"   👉 <a href=\"{lnk}\">Baca Sini</a>"
+                f"   • _{a['desc']}_\n"
+                f"   👉 [Baca Sini]({a['link']})"
             )
         
         body = "\n\n".join(lines)
-        cat_title_esc = _h.escape(cat_title)
         reply = (
-            f"📰 <b>{cat_title_esc} [{today_str}]</b>\n"
+            f"📰 *{cat_title} [{today_str}]*\n"
             f"───────────────\n\n"
             f"{body}\n\n"
             f"───────────────\n"
-            f"💡 <b>Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)</b>:"
+            f"💡 *Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)*:"
         )
         reply_markup = _get_gnews_keyboard()
-        await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML")
+        await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
         return
 
     # ── Location Callback Handlers (No content draft required) ──────────────
@@ -1667,9 +1649,6 @@ def fetch_gnews_articles(query: str = "Malaysia trending viral 2026", max_items:
                     pub_date = item.find("pubDate").text if item.find("pubDate") is not None else ""
                     description = item.find("description").text if item.find("description") is not None else ""
                     
-                    # Unescape HTML entities in title BEFORE splitting source
-                    raw_title = html.unescape(raw_title).strip()
-                    
                     source_name = ""
                     if " - " in raw_title:
                         title_parts = raw_title.rsplit(" - ", 1)
@@ -1797,33 +1776,28 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
             if len(articles) >= 6:
                 break
 
-    import html as _h
     lines = []
     for idx, a in enumerate(articles, start=offset + 1):
-        t = _h.escape(a.get('title', 'Luahan Sensasi'))
-        s = _h.escape(a['source']) if a.get('source') else ""
-        d = _h.escape(a.get('desc', ''))
-        lnk = a.get('link', '')
-        source_str = f" • Sumber: {s}\n" if s else ""
+        source_str = f" • *Sumber*: {a['source']}\n" if a.get('source') else ""
         lines.append(
-            f"<b>{idx}. {t}</b>\n"
+            f"*{idx}. {a['title']}*\n"
             f"{source_str}"
-            f"   • <i>{d}</i>\n"
-            f"   👉 <a href=\"{lnk}\">Baca Sini</a>"
+            f"   • _{a['desc']}_\n"
+            f"   👉 [Baca Sini]({a['link']})"
         )
 
     body = "\n\n".join(lines)
     reply = (
-        f"🔥 <b>VIRAL &amp; CONFESSION SENSASI [{today_str}]</b>\n"
+        f"🔥 *VIRAL & CONFESSION SENSASI [{today_str}]*\n"
         f"───────────────\n"
-        f"📌 <b>Koleksi</b>: <code>Reddit (r/Bolehland, r/malaysia), IIUMC &amp; Lowyat Forum</code>\n\n"
+        f"📌 *Koleksi*: `Reddit (r/Bolehland, r/malaysia), IIUMC & Lowyat Forum`\n\n"
         f"{body}\n\n"
         f"───────────────\n"
-        f"💡 <b>Tekan [More Confessions] untuk 6 cerita seterusnya, atau [Back] untuk ke menu utama:</b> "
+        f"💡 *Tekan [More Confessions] untuk 6 cerita seterusnya, atau [Back] untuk ke menu utama:* "
     )
 
     reply_markup = _get_viral_confessions_keyboard(offset)
-    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML")
+    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
 
 
 async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "trending", max_items: int = 6):
@@ -1844,38 +1818,32 @@ async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     
     if not articles:
-        reply_text = f"⚠️ Tiada berita terkini dijumpai untuk kategori ini dari Google News."
-        await update.message.reply_text(reply_text, parse_mode=None, reply_markup=_get_gnews_keyboard())
+        reply_text = f"⚠️ Tiada berita terkini dijumpai untuk kategori `{category}` dari Google News."
+        await update.message.reply_text(reply_text, parse_mode="Markdown", reply_markup=_get_gnews_keyboard())
         return
 
-    import html as _h
     lines = []
     for idx, a in enumerate(articles, start=1):
-        t = _h.escape(a['title'])
-        s = _h.escape(a['source']) if a['source'] else ""
-        d = _h.escape(a['desc'])
-        lnk = a['link']
-        source_str = f" • Sumber: {s}\n" if s else ""
+        source_str = f" • *Sumber*: {a['source']}\n" if a['source'] else ""
         lines.append(
-            f"<b>{idx}. {t}</b>\n"
+            f"*{idx}. {a['title']}*\n"
             f"{source_str}"
-            f"   • <i>{d}</i>\n"
-            f"   👉 <a href=\"{lnk}\">Baca Sini</a>"
+            f"   • _{a['desc']}_\n"
+            f"   👉 [Baca Sini]({a['link']})"
         )
     
     body = "\n\n".join(lines)
-    cat_title_esc = _h.escape(cat_title)
     
     reply = (
-        f"🔥 <b>{cat_title_esc} [{today_str}]</b>\n"
+        f"🔥 *{cat_title} [{today_str}]*\n"
         f"───────────────\n\n"
         f"{body}\n\n"
         f"───────────────\n"
-        f"💡 <b>Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)</b>:"
+        f"💡 *Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)*:"
     )
     
     reply_markup = _get_gnews_keyboard()
-    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML")
+    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="Markdown")
 
 
 async def _get_weather_forecast(lat: float, lon: float) -> str:
