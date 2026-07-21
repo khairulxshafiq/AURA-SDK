@@ -2205,11 +2205,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=reply_markup)
                 return
 
-        if any(k in msg_clean for k in ["apa berita menarik", "berita viral", "berita trending", "berita malaysia", "gnews", "/news", "top news", "berita terkini", "berita terbaru"]):
-            if "http://" not in msg_clean and "https://" not in msg_clean and not msg_clean.startswith("scrape"):
-                await send_gnews_trending(update, context, category="trending", max_items=6)
-                return
-
         import memory
         loc = memory.get_user_location(user_id)
         if loc:
