@@ -407,12 +407,17 @@ def _send_safe_message(text: str, max_length: int = 4000) -> str:
     return text
 
 
-async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, reply_markup=None):
-    """Send Telegram message with markdown support, automatically falling back to plain text if parsing fails."""
+async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, reply_markup=None, disable_preview: bool = False):
+    """Send Telegram message with markdown support, automatically falling back to plain text if parsing fails.
+    Set disable_preview=True to suppress link preview cards (useful for news lists with many URLs)."""
     import html as _html_mod
+    from telegram import LinkPreviewOptions
 
     target_parse_mode = parse_mode
     target_text = text
+    
+    # Build link preview options (PTB v20+)
+    link_preview_opts = LinkPreviewOptions(is_disabled=True) if disable_preview else None
     
     # If caller already provides HTML content, pass through directly
     if parse_mode == "HTML":
@@ -464,9 +469,9 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, 
 
     try:
         if update.message:
-            await update.message.reply_text(target_text, parse_mode=target_parse_mode, reply_markup=reply_markup, message_thread_id=thread_id)
+            await update.message.reply_text(target_text, parse_mode=target_parse_mode, reply_markup=reply_markup, message_thread_id=thread_id, link_preview_options=link_preview_opts)
         elif update.callback_query and update.callback_query.message:
-            await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode, reply_markup=reply_markup, message_thread_id=thread_id)
+            await update.callback_query.message.reply_text(target_text, parse_mode=target_parse_mode, reply_markup=reply_markup, message_thread_id=thread_id, link_preview_options=link_preview_opts)
     except BadRequest as e:
         logger.warning(f"Telegram parse mode {target_parse_mode} failed. Falling back. Error: {e}")
         # Fallback 1: strip ALL HTML/Markdown tags to produce clean plain text (no raw URLs)
@@ -478,9 +483,9 @@ async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, 
         plain = _re_mod.sub(r"\n{3,}", "\n\n", plain).strip()
         try:
             if update.message:
-                await update.message.reply_text(plain, reply_markup=reply_markup, message_thread_id=thread_id)
+                await update.message.reply_text(plain, reply_markup=reply_markup, message_thread_id=thread_id, link_preview_options=link_preview_opts)
             elif update.callback_query and update.callback_query.message:
-                await update.callback_query.message.reply_text(plain, reply_markup=reply_markup, message_thread_id=thread_id)
+                await update.callback_query.message.reply_text(plain, reply_markup=reply_markup, message_thread_id=thread_id, link_preview_options=link_preview_opts)
         except Exception as fallback_err:
             logger.error(f"Fallback text send failed: {fallback_err}")
 
@@ -873,7 +878,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             f"💡 <b>Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)</b>:"
         )
         reply_markup = _get_gnews_keyboard()
-        await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML")
+        await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML", disable_preview=True)
         return
 
     # ── Location Callback Handlers (No content draft required) ──────────────
@@ -1823,7 +1828,7 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
     )
 
     reply_markup = _get_viral_confessions_keyboard(offset)
-    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML")
+    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML", disable_preview=True)
 
 
 async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "trending", max_items: int = 6):
@@ -1875,7 +1880,7 @@ async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE
     )
     
     reply_markup = _get_gnews_keyboard()
-    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML")
+    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML", disable_preview=True)
 
 
 async def _get_weather_forecast(lat: float, lon: float) -> str:
