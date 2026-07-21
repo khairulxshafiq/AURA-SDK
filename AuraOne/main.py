@@ -2248,7 +2248,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
                     await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=reply_markup)
                     return
 
-        if any(k in msg_clean for k in ["apa berita menarik", "berita viral", "berita trending", "berita malaysia", "gnews", "/news", "top news", "berita terkini"]):
+        if any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "berita malaysia", "gnews", "/news", "top news", "berita terkini", "berita harini", "berita hari ini"]):
             await send_gnews_trending(update, context, category="trending", max_items=6)
             return
 
