@@ -2185,6 +2185,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await confirm_command(update, context)
             return
 
+        if msg_clean in ["scrape", "/scrape", "scrape artikel", "minta scrape"]:
+            reply_text = (
+                "📄 *TUGASAN SCRAPE ARTIKEL*\n"
+                "───────────────\n\n"
+                "Sila hantar pautan URL artikel bersama perkataan `Scrape` (contoh:\n`Scrape https://beautifulnara.com/...`)\n\n"
+                "💡 Atau pilih kategori berita di bawah untuk carian artikel terkini:"
+            )
+            await update.message.reply_text(reply_text, parse_mode="Markdown", reply_markup=_get_gnews_keyboard())
+            return
+
         if any(k in msg_clean for k in ["set rumah", "setkan rumah", "set koordinat", "set cordinat", "sebagai rumah"]):
             if "hq" not in msg_clean and "office" not in msg_clean:
                 import memory
