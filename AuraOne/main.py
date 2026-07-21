@@ -2212,9 +2212,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=reply_markup)
                     return
 
-        if any(k in msg_clean for k in ["apa berita menarik", "berita viral", "berita trending", "berita malaysia", "gnews", "/news", "top news", "berita terkini"]):
-            await send_gnews_trending(update, context, category="trending", max_items=6)
-            return
+        if "http://" not in msg_clean and "https://" not in msg_clean and not msg_clean.startswith("scrape"):
+            if msg_clean in ["/news", "news", "gnews", "berita", "berita viral", "berita trending", "berita malaysia", "top news", "berita terkini", "apa berita menarik"]:
+                await send_gnews_trending(update, context, category="trending", max_items=6)
+                return
 
         if any(k in msg_clean for k in ["set hq", "setkan hq", "set office", "sebagai hq"]):
             import memory
