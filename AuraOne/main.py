@@ -2164,8 +2164,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if user_message:
         msg_clean = user_message.strip().lower()
-        if msg_clean in ["aura", "aura!", "auraa", "hi aura", "salam aura", "hey aura", "ya aura"]:
-            await update.message.reply_text("👋 Ya, Bos Matrol! Ada apa-apa tugasan atau carian yang boleh AURA bantu? ✨")
+        if msg_clean.startswith("confirm") or msg_clean.startswith("/confirm"):
+            await confirm_command(update, context)
             return
 
         if any(k in msg_clean for k in ["set rumah", "setkan rumah", "set koordinat", "set cordinat", "sebagai rumah"]):
