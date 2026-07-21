@@ -1802,6 +1802,9 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
             if len(articles) >= 6:
                 break
 
+    if "scrape_urls" not in context.user_data:
+        context.user_data["scrape_urls"] = {}
+
     import html as _h
     lines = []
     for idx, a in enumerate(articles, start=offset + 1):
@@ -1810,11 +1813,12 @@ async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_T
         d = _h.escape(a.get('desc', ''))
         lnk = a.get('link', '')
         source_str = f" • Sumber: {s}\n" if s else ""
+        context.user_data["scrape_urls"][idx] = lnk
         lines.append(
             f"<b>{idx}. {t}</b>\n"
             f"{source_str}"
             f"   • <i>{d}</i>\n"
-            f"   👉 <a href=\"{lnk}\">Baca Sini</a>"
+            f"   👉 <a href=\"{lnk}\">Baca Sini</a> | 🔄 /s{idx}"
         )
 
     body = "\n\n".join(lines)
@@ -1853,6 +1857,9 @@ async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(reply_text, parse_mode=None, reply_markup=_get_gnews_keyboard())
         return
 
+    if "scrape_urls" not in context.user_data:
+        context.user_data["scrape_urls"] = {}
+
     import html as _h
     lines = []
     for idx, a in enumerate(articles, start=1):
@@ -1861,11 +1868,12 @@ async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE
         d = _h.escape(a['desc'])
         lnk = a['link']
         source_str = f" • Sumber: {s}\n" if s else ""
+        context.user_data["scrape_urls"][idx] = lnk
         lines.append(
             f"<b>{idx}. {t}</b>\n"
             f"{source_str}"
             f"   • <i>{d}</i>\n"
-            f"   👉 <a href=\"{lnk}\">Baca Sini</a>"
+            f"   👉 <a href=\"{lnk}\">Baca Sini</a> | 🔄 /s{idx}"
         )
     
     body = "\n\n".join(lines)
@@ -2101,7 +2109,23 @@ async def sethq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def scrape_shortcut_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip()
+    try:
+        idx = int(text.replace("/s", ""))
+    except ValueError:
+        return
+    
+    urls = context.user_data.get("scrape_urls", {})
+    if idx in urls:
+        url = urls[idx]
+        await update.message.reply_text(f"⚡ *Memproses Artikel {idx}...*\n_{url}_\nSila tunggu...", parse_mode="Markdown", disable_web_page_preview=True)
+        await handle_message(update, context, override_text=f"Scrape {url}")
+    else:
+        await update.message.reply_text("⚠️ URL tidak dijumpai dalam memori sesi. Sila minta senarai berita baru.")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, override_text: str = None):
     global current_key_idx
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
@@ -2193,6 +2217,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(f"⚠️ Gagal memuat turun dokumen: {e}")
             return
 
+    elif override_text:
+        user_message = override_text
     else:
         user_message = update.message.text
 
@@ -2399,6 +2425,7 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, handle_location))
+    application.add_handler(MessageHandler(filters.Regex(r"^/s\d+$"), scrape_shortcut_command))
     application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.VOICE | filters.Document.ALL) & ~filters.COMMAND, handle_message))
 
 
