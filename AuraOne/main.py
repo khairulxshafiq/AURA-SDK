@@ -2081,23 +2081,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             telegram_file = await context.bot.get_file(photo.file_id)
             file_bytearray = await telegram_file.download_as_bytearray()
             img_bytes = bytes(file_bytearray)
-            
-            # Fast Image Optimization for 3x faster Multimodal Vision AI processing
-            import io
-            from PIL import Image as PILImage
-            try:
-                im = PILImage.open(io.BytesIO(img_bytes))
-                if im.mode in ("RGBA", "P"):
-                    im = im.convert("RGB")
-                if im.width > 1280 or im.height > 1280:
-                    im.thumbnail((1280, 1280))
-                    buf = io.BytesIO()
-                    im.save(buf, format="JPEG", quality=85)
-                    img_bytes = buf.getvalue()
-                    logger.info(f"Optimized photo to max 1280px ({len(img_bytes)} bytes) for 3x faster Vision AI processing.")
-            except Exception as opt_err:
-                logger.warning(f"Photo optimization skipped: {opt_err}")
-
             # Save to temp file for OpenRouter proxy image injection fallback
             try:
                 with open("/tmp/last_user_media.jpg", "wb") as f:
@@ -2185,16 +2168,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await confirm_command(update, context)
             return
 
-        if msg_clean in ["scrape", "/scrape", "scrape artikel", "minta scrape"]:
-            reply_text = (
-                "📄 *TUGASAN SCRAPE ARTIKEL*\n"
-                "───────────────\n\n"
-                "Sila hantar pautan URL artikel bersama perkataan `Scrape` (contoh:\n`Scrape https://beautifulnara.com/...`)\n\n"
-                "💡 Atau pilih kategori berita di bawah untuk carian artikel terkini:"
-            )
-            await update.message.reply_text(reply_text, parse_mode="Markdown", reply_markup=_get_gnews_keyboard())
-            return
-
         if any(k in msg_clean for k in ["set rumah", "setkan rumah", "set koordinat", "set cordinat", "sebagai rumah"]):
             if "hq" not in msg_clean and "office" not in msg_clean:
                 import memory
@@ -2212,10 +2185,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text(reply, parse_mode="Markdown", reply_markup=reply_markup)
                     return
 
-        if "http://" not in msg_clean and "https://" not in msg_clean and not msg_clean.startswith("scrape"):
-            if msg_clean in ["/news", "news", "gnews", "berita", "berita viral", "berita trending", "berita malaysia", "top news", "berita terkini", "apa berita menarik"]:
-                await send_gnews_trending(update, context, category="trending", max_items=6)
-                return
+        if any(k in msg_clean for k in ["apa berita menarik", "berita viral", "berita trending", "berita malaysia", "gnews", "/news", "top news", "berita terkini"]):
+            await send_gnews_trending(update, context, category="trending", max_items=6)
+            return
 
         if any(k in msg_clean for k in ["set hq", "setkan hq", "set office", "sebagai hq"]):
             import memory
@@ -2267,8 +2239,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cooldown_expiry = 0.0
             
         if cooldown_expiry > time.time():
-            rem = int(cooldown_expiry - time.time())
-            logger.info(f"[Gemini] Key [F{current_key_idx + 1}] is on cooldown ({rem}s left). Instantly skipping to next key...")
+            logger.info(f"[Gemini] Key index {current_key_idx} is on cooldown for another {int(cooldown_expiry - time.time())}s. Skipping...")
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
 
@@ -2276,7 +2247,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         gemini_config = _build_gemini_config(conv_id)
 
         try:
-            logger.info(f"[Gemini] Attempting chat using key [F{current_key_idx + 1}] ({current_key_idx + 1}/{num_keys})...")
+            logger.info(f"[Gemini] Attempting chat using key index {current_key_idx}/{num_keys}...")
             async with Agent(gemini_config) as agent:
                 chat_input = [media_part, user_message] if media_part else user_message
                 response = await agent.chat(chat_input)
@@ -2290,8 +2261,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             gemini_success = True
             break
         except Exception as gemini_err:
-            logger.warning(f"[Gemini] Key [F{current_key_idx + 1}] error: {gemini_err}. Putting on 10-min cooldown and rotating...")
-            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 600.0))
+            logger.warning(f"[Gemini] Key index {current_key_idx} error: {gemini_err}. Putting on 3-min cooldown and rotating...")
+            memory.update_preference(f"cooldown:{active_key}", str(time.time() + 180.0))
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
 
@@ -2300,12 +2271,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
             return
         if is_debug:
-            final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini — F{current_key_idx + 1}\\]*\n\n{response_text}")
+            final_text = _send_safe_message(f"🔧 *\\[DEBUG: Gemini\\]*\n\n{response_text}")
             await _send_telegram_msg(update, final_text, parse_mode="MarkdownV2")
         else:
             clean = _clean_response(response_text)
-            prefix = f"[F{current_key_idx + 1}] google/gemini-2.5-flash\n\n"
-            final_text = _send_safe_message(f"{prefix}{clean}")
+            final_text = _send_safe_message(clean)
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         return
 
@@ -2315,7 +2285,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not OPENROUTER_API_KEY:
         await update.message.reply_text(
-            "⚠️ Semua kunci Gemini [F1-F6] dalam cooldown dan OPENROUTER_API_KEY tidak dikonfigurasi."
+            "⚠️ Gemini telah mencapai had penggunaan dan OPENROUTER_API_KEY tidak dikonfigurasi."
         )
         return
 
@@ -2344,14 +2314,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
         else:
             clean = _clean_response(response_text)
-            prefix = f"[P1] {OPENROUTER_FALLBACK_MODEL}\n\n"
-            final_text = _send_safe_message(f"{prefix}{clean}")
+            final_text = _send_safe_message(clean)
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
 
     except Exception as or_err:
         logger.error(f"[OpenRouter] Fallback error for user {user_id}: {or_err}", exc_info=True)
         err_msg = _send_safe_message(
-            f"⚠️ Kedua-dua model gagal:\n• Gemini [F1-F6]: Had penggunaan/cooldown\n• OpenRouter [P1]: {str(or_err)}"
+            f"⚠️ Kedua-dua model gagal:\n• Gemini: Had penggunaan\n• OpenRouter: {str(or_err)}"
         )
         await _send_telegram_msg(update, err_msg)
 
