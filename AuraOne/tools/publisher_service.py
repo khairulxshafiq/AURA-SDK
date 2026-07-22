@@ -176,6 +176,8 @@ def upload_article_dump_to_drive(
         logger.error(f"Error in upload_article_dump_to_drive: {e}")
         return {"status": "error", "error": str(e)}
 
+_upload_article_dump_to_github = upload_article_dump_to_drive
+
 def save_draft_to_airtable(
     title: str,
     caption: str,
