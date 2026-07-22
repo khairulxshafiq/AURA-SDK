@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-22)
+* **Google News URL Unwrapper & Scraping Fix**: Implemented sub-millisecond base64 payload URL unwrapper `resolve_gnews_url` in `tools.py` with multi-tier fallbacks (`googlenewsdecoder` + HTTP redirect/canonical parsing). Added strict URL guard in `main.py` to prevent false `send_gnews_trending` menu triggers when a URL is present. Added 3-tier scraping fallback (Firecrawl -> Native -> Jina Reader Cloudflare Bypass) and specific error handling ("Gagal mengekstrak isi kandungan artikel") without falling back to the news menu on failure.
 * **Ignored Temp & Dump Files in `.gitignore`**: Added `AuraOne/dumps/*`, `AuraOne/images/*`, and `*.bak` to `.gitignore` to prevent test scrape output files from bloating the repository.
 * **Updated `AGENTS.md` Rules & Constraints**: Updated [`AGENTS.md`](file:///home/ubuntu/projects/AURA-SDK/AGENTS.md) with strict codebase index, mandatory feature branching rules (`feature/description-yyyy-mm-dd`), PR/merge verification standards, and code modification guardrails.
 * **Enforced Strict Git & Branching Rules**: Enforced strict feature branching rule (`feature/description-yyyy-mm-dd` or `fix/description-yyyy-mm-dd`). Direct commits to `main` are strictly forbidden. All changes must be tested on feature branches before merging.
