@@ -18,8 +18,8 @@ AuraOne/__pycache__/
 # OS specific files
 .DS_Store
 
-# LUMA-specific files (not to be pushed to GitHub)
+# LUMA-specific files
 Reference/
-LUMA_MEMORY.md
+!AuraOne/LUMA_MEMORY.md
 .luma_memory.md
 
