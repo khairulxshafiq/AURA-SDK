@@ -678,12 +678,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             await _send_telegram_msg(update, clean, parse_mode="Markdown")
             return
         except Exception as err:
-            if "429" in str(err):
+            logger.warning(f"Gemini key #{current_key_idx + 1} failed ({err}), trying next key...")
+            if "429" in str(err) or "quota" in str(err).lower():
                 memory.set_key_cooldown(active_key, 600.0)
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
 
-    await update.message.reply_text("⚠️ Semua Gemini API Key dalam giliran sedang bercuti/cooldown. Sila cuba sebentar lagi!")
+    # ─── OpenRouter Proxy Fallback ──────────────────────────────────────────────
+    try:
+        logger.info(f"All Gemini keys in cooldown/failed. Falling back to OpenRouter ({OPENROUTER_FALLBACK_MODEL}) for user {user_id}...")
+        os.environ["GEMINI_API_KEY"] = ""
+        from orchestrator.supervisor import get_supervisor_openrouter_config
+        from google.antigravity import Agent
+        or_config = get_supervisor_openrouter_config(conv_id)
+        if or_config is not None:
+            async with Agent(or_config) as agent:
+                response = await agent.chat(user_message)
+                response_text = await response.text()
+                if not conv_id and agent.conversation_id:
+                    _register_conv_id_for_user(user_id, agent.conversation_id)
+
+            response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
+            if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
+                return
+            clean = _clean_response(response_text)
+            final_text = f"[P1] {OPENROUTER_FALLBACK_MODEL}\n\n{clean}" if not is_debug else f"🔧 *[DEBUG: OpenRouter]*\n\n{clean}"
+            await _send_telegram_msg(update, final_text, parse_mode="Markdown")
+            return
+    except Exception as or_err:
+        logger.error(f"[OpenRouter Fallback Error] {or_err}", exc_info=True)
+
+    await update.message.reply_text("⚠️ Semua Gemini API Key & OpenRouter Fallback sedang bercuti/cooldown. Sila cuba sebentar lagi!")
 
 # ─── Handler Registration ─────────────────────────────────────────────────────
 
