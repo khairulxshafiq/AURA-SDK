@@ -9,7 +9,7 @@ Welcome, Agent! This repository powers **Agent Aura** running on Antigravity SDK
   - `persona.txt`: System persona configuration.
 - `AuraOne/skills/`: Individual modular skills (contains `SKILL.md` per skill).
 - `AuraOne/reference_blueprints/`: Specialized documentation for tools & APIs (`airtable_tools.md`, `antigravity_alignment.md`, etc.).
-- `LUMA_MEMORY.md`: Persistence & memory state tracking.
+- `AuraOne/LUMA_MEMORY.md`: Persistence & memory state tracking.
 
 ## 🛑 Rules for Modifying Code
 1. **Never edit `main.py` directly** without testing. Keep backups or feature branches.
