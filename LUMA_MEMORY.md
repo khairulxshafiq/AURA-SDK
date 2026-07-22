@@ -4,7 +4,8 @@
 
 ---
 
-## 🚀 Recent Architecture Audit & Fixes (2026-07-21)
+## 🚀 Recent Architecture Audit & Fixes (2026-07-22)
+* **Created Global Repository Guide `AGENTS.md`**: Placed `AGENTS.md` in the project root directory (`~/projects/AURA-SDK/AGENTS.md`) defining core architecture, index, blueprint rules, and VPS sync guidelines.
 * **n8n Facebook Text-Only Posting Rule Deployed**: Updated n8n workflow `qbOJJ5lJ3ybq6iqx` on Railway (`auraone-n8nauto.up.railway.app`) via direct PostgreSQL DB manipulation. Added `If Has Image (FB)` node to dynamically branch between `/photos` (for image drafts) and `/feed` (for text-only drafts) endpoints, fixing `(#100) Parameter url should be a valid URL` errors completely.
 * **Smart Key Rotation & 10-Min Cooldown Fast Skip**: Implemented smart 10-minute cooldown tracking in SQLite DB for rate-limited keys. When `F1` hits 429, AURA immediately skips `F1` on subsequent requests with zero latency, advancing through `F1-F6` and instantly falling back to OpenRouter Proxy `[P1]` if all free keys are on cooldown.
 * **Restored [F1-F6]/[P1] Model Header Labels**: Every message response now clearly displays the active model/key header (`[F1] google/gemini-2.5-flash`, `[P1] google/gemini-2.5-flash`, etc.) so the user always knows which key/model answered.
