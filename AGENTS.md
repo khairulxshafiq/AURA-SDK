@@ -1,29 +1,32 @@
-# AGENTS.md — Global Guide for Agent Aura
+# AGENTS.md — Rules & Constraints for Agent Aura
 
-Welcome, Agent! This repository powers **Agent Aura** running on Antigravity SDK over a Linux VPS.
+Welcome, Agent! You are working inside the AURA-SDK repository. 
+Refer to `README.md` for high-level system architecture and systemd services.
 
-## 🗂️ Core Architecture & Index
-- `AuraOne/`: Core application workspace.
-  - `main.py`: Entry point for Aura execution.
-  - `tools.py` & `memory.py`: Native tools and memory handlers.
-  - `persona.txt`: System persona configuration.
-- `AuraOne/skills/`: Individual modular skills (contains `SKILL.md` per skill).
-- `AuraOne/reference_blueprints/`: Specialized documentation for tools & APIs (`airtable_tools.md`, `antigravity_alignment.md`, etc.).
-- `AuraOne/LUMA_MEMORY.md`: Persistence & memory state tracking.
+---
+
+## 🗂️ Codebase Index
+- `AuraOne/`: Core application workspace (`main.py`, `tools.py`, `memory.py`).
+- `AuraOne/skills/`: Modular agent skills. Each skill contains a `SKILL.md`.
+- `AuraOne/reference_blueprints/`: Architectural blueprints and API schemas.
+- `AuraOne/LUMA_MEMORY.md`: Persistence state tracking.
+
+---
 
 ## 🔀 Git & Branching Rules (STRICT)
-1. **NEVER push directly to `main` branch.**
-2. **Feature Branches:** Every code modification, new feature, or bug fix MUST be made on a dedicated branch using the following naming convention:
-   - `feature/description-yyyy-mm-dd` (e.g., `feature/airtable-sync-2026-07-22`)
-   - `fix/issue-description-yyyy-mm-dd`
-3. **Pull Request & Merge:**
-   - Always commit changes to the feature branch first.
-   - Only merge to `main` after testing and verification.
-4. **Versioning / Restoration:**
-   - Create a clean git tag or descriptive commit before merging so code can easily be restored/reverted to any previous state (e.g., 5 days ago).
 
-## 🛑 Rules for Modifying Code
-1. **Never edit `main.py` directly** without testing on a feature branch.
-2. **Adding Tools:** If you build a new tool, define it in `AuraOne/tools.py` and create/update its respective blueprint in `AuraOne/reference_blueprints/`.
-3. **VPS Sync:** Always make sure changes work smoothly with `sync_vps.sh`.
-4. **Environment Variables:** Never commit secrets! Update `.env.example` if new keys are added.
+1. **NEVER push or commit directly to the `main` branch.**
+2. **Feature Branching Mandatory:** Create a dedicated branch before making modifications:
+   - `feature/description-yyyy-mm-dd`
+   - `fix/issue-description-yyyy-mm-dd`
+3. **Merging:** Verify code functionality locally/isolated before submitting a PR or merging to `main`.
+4. **Clean Commits:** Provide detailed commit messages so revisions can easily be reverted (e.g., restoring state from 5 days ago).
+
+---
+
+## 🛑 Code Modification Guardrails
+
+1. **Isolation:** Do NOT modify `main.py` directly without testing inside a feature branch.
+2. **Secrets:** NEVER hardcode API keys or secrets into source files. Ensure new key variables are mapped in `.env.example`.
+3. **Tool Registration:** When adding new tools, register them in `AuraOne/tools.py` and document the blueprint in `AuraOne/reference_blueprints/`.
+4. **System Protection:** Do not run dangerous shell/terminal commands (`rm -rf`, system-wide `chmod 777`).

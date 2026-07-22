@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-22)
+* **Updated `AGENTS.md` Rules & Constraints**: Updated [`AGENTS.md`](file:///home/ubuntu/projects/AURA-SDK/AGENTS.md) with strict codebase index, mandatory feature branching rules (`feature/description-yyyy-mm-dd`), PR/merge verification standards, and code modification guardrails.
 * **Enforced Strict Git & Branching Rules**: Enforced strict feature branching rule (`feature/description-yyyy-mm-dd` or `fix/description-yyyy-mm-dd`). Direct commits to `main` are strictly forbidden. All changes must be tested on feature branches before merging.
 * **Consolidated Memory Path**: Moved `LUMA_MEMORY.md` into `AuraOne/LUMA_MEMORY.md` so that all application logic, persona, skills, and memory state tracking are grouped together inside the `AuraOne/` workspace directory.
 * **Created Global Repository Guide `AGENTS.md`**: Placed `AGENTS.md` in the project root directory (`~/projects/AURA-SDK/AGENTS.md`) defining core architecture, index, blueprint rules, and VPS sync guidelines.
