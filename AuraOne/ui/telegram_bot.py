@@ -36,6 +36,58 @@ from ui.formatters import (
 
 logger = logging.getLogger("aura.ui.telegram_bot")
 
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class OpenRouterProxyHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_body = self.rfile.read(content_length)
+        api_key = OPENROUTER_API_KEY
+        if not api_key:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b"OPENROUTER_API_KEY not configured")
+            return
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://aura-sdk.local",
+            "X-Title": "AURA-SDK"
+        }
+
+        try:
+            with httpx.Client(timeout=60.0) as client:
+                resp = client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers=headers,
+                    content=post_body
+                )
+            self.send_response(resp.status_code)
+            for k, v in resp.headers.items():
+                if k.lower() not in ['content-length', 'transfer-encoding', 'content-encoding']:
+                    self.send_header(k, v)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(resp.content)
+        except Exception as e:
+            logger.error(f"[OpenRouter Proxy] Exception: {e}")
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(str(e).encode('utf-8'))
+
+    def log_message(self, format, *args):
+        logger.info(f"[OpenRouter Proxy] {format % args}")
+
+def _start_openrouter_proxy(port: int = 18080):
+    """Start local OpenRouter reverse proxy in a background daemon thread."""
+    server = HTTPServer(('127.0.0.1', port), OpenRouterProxyHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    logger.info(f"OpenRouter reverse proxy server started on port {port}.")
+    return server
+
 DEBUG_USERS: dict = {}
 current_key_idx = 0
 
@@ -590,9 +642,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             await confirm_command(update, context)
             return
 
-        if any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
-            await send_gnews_trending(update, context, category="trending", max_items=6)
-            return
+        if "http://" not in msg_clean and "https://" not in msg_clean and not msg_clean.startswith("scrape"):
+            if any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
+                await send_gnews_trending(update, context, category="trending", max_items=6)
+                return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     conv_id = _get_conv_id_for_user(user_id)

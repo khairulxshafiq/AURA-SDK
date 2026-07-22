@@ -12,6 +12,7 @@
 * **Clean Git Repo**: Menyah-jejak (`git rm --cached`) fail dumps dan images tempatan serta menambahnya ke `.gitignore`.
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-22)
+* **Modular Refactoring Sync & Service Restart**: Pulled `origin/main` commit `7a9376e` (complete Phase 1-3 modular UI & Multi-Agent Supervisor refactoring), resolved git merge conflict markers cleanly, integrated OpenRouter Reverse Proxy handler, verified zero syntax errors, and restarted `aura.service` on VPS (`Active: active (running)`).
 * **Google News URL Unwrapper & Scraping Fix**: Implemented sub-millisecond base64 payload URL unwrapper `resolve_gnews_url` in `tools.py` with multi-tier fallbacks (`googlenewsdecoder` + HTTP redirect/canonical parsing). Added strict URL guard in `main.py` to prevent false `send_gnews_trending` menu triggers when a URL is present. Added 3-tier scraping fallback (Firecrawl -> Native -> Jina Reader Cloudflare Bypass) and specific error handling ("Gagal mengekstrak isi kandungan artikel") without falling back to the news menu on failure.
 * **Ignored Temp & Dump Files in `.gitignore`**: Added `AuraOne/dumps/*`, `AuraOne/images/*`, and `*.bak` to `.gitignore` to prevent test scrape output files from bloating the repository.
 * **Updated `AGENTS.md` Rules & Constraints**: Updated [`AGENTS.md`](file:///home/ubuntu/projects/AURA-SDK/AGENTS.md) with strict codebase index, mandatory feature branching rules (`feature/description-yyyy-mm-dd`), PR/merge verification standards, and code modification guardrails.

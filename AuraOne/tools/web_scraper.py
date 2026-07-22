@@ -11,9 +11,44 @@ FIRECRAWL_BASE = "https://api.firecrawl.dev/v1"
 JINA_READER_BASE = "https://r.jina.ai"
 
 def resolve_gnews_url(url: str) -> str:
-    """Resolve Google News redirect/rss URLs to the final destination article URL."""
+    """Resolve base64-encoded Google News redirect/wrapper URL to the final destination URL."""
     if not url or "news.google.com" not in url.lower():
         return url
+
+    # Method 1: Direct Base64 Payload Byte Decoding (Sub-millisecond, zero network overhead)
+    try:
+        import re
+        import base64
+        match = re.search(r"/articles/([^/?]+)", url)
+        if match:
+            art_id = match.group(1)
+            missing_padding = len(art_id) % 4
+            if missing_padding:
+                art_id += '=' * (4 - missing_padding)
+            decoded_bytes = base64.urlsafe_b64decode(art_id)
+            http_matches = re.findall(rb"https?://[^\s\x00-\x1f\x7f-\xff]+", decoded_bytes)
+            if http_matches:
+                final_url = http_matches[0].decode('utf-8', errors='ignore')
+                final_url = re.sub(r"[^\w\-\.\/\?\=\&\%\:\#\+\~]+$", "", final_url)
+                if final_url.startswith("http") and "news.google.com" not in final_url:
+                    logger.info(f"[GNewsResolver] Method 1 (base64) resolved: {url[:45]}... -> {final_url}")
+                    return final_url
+    except Exception as b64_err:
+        logger.warning(f"[GNewsResolver] Method 1 base64 decode failed: {b64_err}")
+
+    # Method 2: Use googlenewsdecoder library
+    try:
+        from googlenewsdecoder import gnewsdecoder
+        res = gnewsdecoder(url)
+        if isinstance(res, dict) and res.get("status") and res.get("decoded_url"):
+            decoded_url = res["decoded_url"]
+            if decoded_url.startswith("http") and "news.google.com" not in decoded_url:
+                logger.info(f"[GNewsResolver] Method 2 (decoder) resolved: {url[:45]}... -> {decoded_url}")
+                return decoded_url
+    except Exception as dec_err:
+        logger.warning(f"[GNewsResolver] Method 2 decoder failed: {dec_err}")
+
+    # Method 3: HTTP GET with follow_redirects=True & HTML canonical parsing
     try:
         headers = {
             "User-Agent": (
