@@ -1,8 +1,15 @@
 # LUMA Memory & Progress Tracking
 
-## 📅 Last Updated: 2026-07-21
+## 📅 Last Updated: 2026-07-23
 
 ---
+
+## 🚀 Recent Architecture Audit & Fixes (2026-07-23)
+* **Phase 1 Refactoring Complete**: Berjaya mengasingkan codebase monolitik kepada `config.py`, `storage/` (Repository Pattern untuk SQLite: db, memory, location, draft), dan `tools/` (Atomic Tools: web_scraper, search_engine, location_service, apify_service, publisher_service) dengan 100% façade backward compatibility pada `memory.py` dan `tools.py`.
+* **Google Drive Storage & Folder Split Migration**: Hentikan sepenuhnya GitHub CDN hosting/dump commit automatik. Berjaya migrasi muat naik ke Google Drive API menggunakan 2 folder khas:
+  * `GDRIVE_IMAGE_FOLDER_ID` (`1ntdhPOq3Z7oNXLDqQgVyVQS6tIMoArc3`) untuk fail imej (`web-*.jpg`/`png`).
+  * `GDRIVE_DUMP_FOLDER_ID` (`1Ybx7mBAKksI2VcagHAqOuKkf8pjbvYwa`) untuk draf/dump artikel teks (`web-*.txt`).
+* **Clean Git Repo**: Menyah-jejak (`git rm --cached`) fail dumps dan images tempatan serta menambahnya ke `.gitignore`.
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-22)
 * **Google News URL Unwrapper & Scraping Fix**: Implemented sub-millisecond base64 payload URL unwrapper `resolve_gnews_url` in `tools.py` with multi-tier fallbacks (`googlenewsdecoder` + HTTP redirect/canonical parsing). Added strict URL guard in `main.py` to prevent false `send_gnews_trending` menu triggers when a URL is present. Added 3-tier scraping fallback (Firecrawl -> Native -> Jina Reader Cloudflare Bypass) and specific error handling ("Gagal mengekstrak isi kandungan artikel") without falling back to the news menu on failure.

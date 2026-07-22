@@ -6,10 +6,20 @@ Refer to `README.md` for high-level system architecture and systemd services.
 ---
 
 ## 🗂️ Codebase Index
-- `AuraOne/`: Core application workspace (`main.py`, `tools.py`, `memory.py`).
+- `AuraOne/`: Core application workspace (`main.py`, `config.py`, `tools.py`, `memory.py`).
+- `AuraOne/config.py`: Centralized environment configurations & project constants.
+- `AuraOne/storage/`: SQLite Repository Pattern layer (`db.py`, `memory_repository.py`, `location_repository.py`, `draft_repository.py`).
+- `AuraOne/tools/`: Atomic modular tools (`web_scraper.py`, `search_engine.py`, `location_service.py`, `apify_service.py`, `publisher_service.py`).
 - `AuraOne/skills/`: Modular agent skills. Each skill contains a `SKILL.md`.
 - `AuraOne/reference_blueprints/`: Architectural blueprints and API schemas.
 - `AuraOne/LUMA_MEMORY.md`: Persistence state tracking.
+
+---
+
+## ⚙️ Environment & Storage Specifications
+- **Google Drive API Folder Split Storage**:
+  - `GDRIVE_IMAGE_FOLDER_ID` (`1ntdhPOq3Z7oNXLDqQgVyVQS6tIMoArc3`): Folder khas muat naik fail imej (`web-*.jpg`/`png`).
+  - `GDRIVE_DUMP_FOLDER_ID` (`1Ybx7mBAKksI2VcagHAqOuKkf8pjbvYwa`): Folder khas muat naik draf/dump artikel teks (`web-*.txt`).
 
 ---
 

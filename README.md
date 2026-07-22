@@ -55,8 +55,9 @@ AURA is designed to support the following key capabilities (located in `AuraOne/
    * Automatically saves generated posts, research drafts, and ideas to the "Content Station" table.
 3. **Multi-Style Content Writer (`content_tools.md`)**
    * Prompts and templates tailored for Malaysian copywriting styles (e.g., *cikgu_fadhli*, *santai_bercerita*).
-4. **Google Drive Integration (`gdrive_tools.md`)**
-   * Secure service account authentication to upload, read, and search files inside a designated Google Drive folder.
+4. **Google Drive Integration & Cloud Storage (`gdrive_tools.md`)**
+   * Secure service account authentication to upload, read, and search files inside designated Google Drive folders.
+   * Official cloud storage for image uploads (`GDRIVE_IMAGE_FOLDER_ID`: `1ntdhPOq3Z7oNXLDqQgVyVQS6tIMoArc3`) and article text draft dumps (`GDRIVE_DUMP_FOLDER_ID`: `1Ybx7mBAKksI2VcagHAqOuKkf8pjbvYwa`), replacing legacy GitHub CDN auto-commits.
 5. **AI Image Generation (`image_tools.md`)**
    * Flux Schnell image generation via Replicate API for visual posts.
 6. **Trading & Market Analysis (`trading_tools.md`)**
@@ -73,8 +74,21 @@ AURA-SDK/
 │   ├── .env                       # Environment variables (Gitignored)
 │   ├── .venv/                     # Python virtual environment (Gitignored)
 │   ├── main.py                    # Bot handler & agent core loop
-│   ├── tools.py                   # Custom tool registration
+│   ├── config.py                  # Environment configuration & constants
+│   ├── tools.py                   # Atomic tools façade (100% backward compatibility)
+│   ├── memory.py                  # Storage repository façade (100% backward compatibility)
 │   ├── persona.txt                # System instructions/agent behavior rules
+│   ├── storage/                   # SQLite Repository Pattern layer
+│   │   ├── db.py                  # Core database connection helper
+│   │   ├── memory_repository.py   # Key rotation & cooldown persistence repository
+│   │   ├── location_repository.py # User coordinates & saved places repository
+│   │   └── draft_repository.py    # Platform draft selection & workflow state repository
+│   ├── tools/                     # Atomic modular tools
+│   │   ├── web_scraper.py         # Article scraping & URL resolution
+│   │   ├── search_engine.py       # DuckDuckGo & GNews live engine
+│   │   ├── location_service.py    # Geocoding & Open-Meteo weather integration
+│   │   ├── apify_service.py       # Apify Shopee scraper pipeline
+│   │   └── publisher_service.py   # Google Drive API & Airtable sync publisher
 │   ├── sessions/                  # Local user chat history sessions (Gitignored)
 │   ├── skills/                    # Specialized agent capability modules
 │   └── reference_blueprints/       # Legacy AURA v5 reference code for porting

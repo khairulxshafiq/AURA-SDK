@@ -1,8 +1,15 @@
 # LUMA Memory & Progress Tracking
 
-## 📅 Last Updated: 2026-07-21
+## 📅 Last Updated: 2026-07-23
 
 ---
+
+## 🚀 Recent Architecture Audit & Fixes (2026-07-23)
+* **Phase 1 Refactoring Complete**: Berjaya mengasingkan codebase monolitik kepada `config.py`, `storage/` (Repository Pattern untuk SQLite: db, memory, location, draft), dan `tools/` (Atomic Tools: web_scraper, search_engine, location_service, apify_service, publisher_service) dengan 100% façade backward compatibility pada `memory.py` dan `tools.py`.
+* **Google Drive Storage & Folder Split Migration**: Hentikan sepenuhnya GitHub CDN hosting/dump commit automatik. Berjaya migrasi muat naik ke Google Drive API menggunakan 2 folder khas:
+  * `GDRIVE_IMAGE_FOLDER_ID` (`1ntdhPOq3Z7oNXLDqQgVyVQS6tIMoArc3`) untuk fail imej (`web-*.jpg`/`png`).
+  * `GDRIVE_DUMP_FOLDER_ID` (`1Ybx7mBAKksI2VcagHAqOuKkf8pjbvYwa`) untuk draf/dump artikel teks (`web-*.txt`).
+* **Clean Git Repo**: Menyah-jejak (`git rm --cached`) fail dumps dan images tempatan serta menambahnya ke `.gitignore`.
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-22)
 * **Created Global Repository Guide `AGENTS.md`**: Placed `AGENTS.md` in the project root directory (`~/projects/AURA-SDK/AGENTS.md`) defining core architecture, index, blueprint rules, and VPS sync guidelines.
