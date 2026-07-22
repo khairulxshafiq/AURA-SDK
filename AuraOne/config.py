@@ -43,6 +43,32 @@ FIRECRAWL_TIMEOUT_MS = int(os.environ.get("FIRECRAWL_TIMEOUT_MS", "30000"))
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
+# ─── Google Drive Storage Config ─────────────────────────────────────────────
+def _extract_gdrive_folder_id(val: str, default_id: str) -> str:
+    if not val:
+        return default_id
+    val = val.strip()
+    if "drive.google.com" in val:
+        import re
+        match = re.search(r"/folders/([a-zA-Z0-9_-]+)", val)
+        if match:
+            return match.group(1)
+    return val
+
+DEFAULT_GDRIVE_IMAGE_FOLDER_ID = "1ntdhPOq3Z7oNXLDqQgVyVQS6tIMoArc3"
+DEFAULT_GDRIVE_DUMP_FOLDER_ID = "1Ybx7mBAKksI2VcagHAqOuKkf8pjbvYwa"
+
+GDRIVE_IMAGE_FOLDER_ID = _extract_gdrive_folder_id(
+    os.environ.get("GDRIVE_IMAGE_FOLDER_ID", ""),
+    DEFAULT_GDRIVE_IMAGE_FOLDER_ID
+)
+
+GDRIVE_DUMP_FOLDER_ID = _extract_gdrive_folder_id(
+    os.environ.get("GDRIVE_DUMP_FOLDER_ID", ""),
+    DEFAULT_GDRIVE_DUMP_FOLDER_ID
+)
+
+
 # ─── Gemini Keys for Rotation ────────────────────────────────────────────────
 GEMINI_KEYS = []
 main_key = os.environ.get("GEMINI_API_KEY", "")

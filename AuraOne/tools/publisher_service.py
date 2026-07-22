@@ -6,7 +6,14 @@ import logging
 import httpx
 from typing import Optional
 
-from config import AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_NAME, DEFAULT_BRAND
+from config import (
+    AIRTABLE_API_KEY,
+    AIRTABLE_BASE_ID,
+    AIRTABLE_TABLE_NAME,
+    DEFAULT_BRAND,
+    GDRIVE_IMAGE_FOLDER_ID,
+    GDRIVE_DUMP_FOLDER_ID
+)
 
 logger = logging.getLogger("aura.tools.publisher_service")
 
@@ -34,7 +41,9 @@ def _get_gdrive_access_token() -> Optional[str]:
 
 def upload_file_to_drive(file_bytes: bytes, filename: str, mime_type: str = "image/jpeg", folder_id: str = None) -> dict:
     """Upload file bytes directly to Google Drive folder and set public read permission."""
-    folder_id = folder_id or os.environ.get("GDRIVE_FOLDER_ID", "1Apv70Qwp2iF0405kn4mmzaB1UmXkWwqM")
+    if not folder_id:
+        folder_id = GDRIVE_DUMP_FOLDER_ID if mime_type.startswith("text/") else GDRIVE_IMAGE_FOLDER_ID
+
     token = _get_gdrive_access_token()
     if not token:
         return {"status": "error", "error": "Google Drive credentials not set"}
