@@ -1,6 +1,4 @@
 import os
-import re
-import base64
 import urllib.parse
 import logging
 import httpx
@@ -13,72 +11,25 @@ FIRECRAWL_BASE = "https://api.firecrawl.dev/v1"
 JINA_READER_BASE = "https://r.jina.ai"
 
 def resolve_gnews_url(url: str) -> str:
-    """Resolve base64-encoded Google News redirect/wrapper URL to the final destination URL."""
+    """Resolve Google News redirect/rss URLs to the final destination article URL."""
     if not url or "news.google.com" not in url.lower():
         return url
-
-    # Method 1: Direct Base64 Payload Byte Decoding (Sub-millisecond, zero network overhead)
-    try:
-        match = re.search(r"/articles/([^/?]+)", url)
-        if match:
-            art_id = match.group(1)
-            missing_padding = len(art_id) % 4
-            if missing_padding:
-                art_id += '=' * (4 - missing_padding)
-            decoded_bytes = base64.urlsafe_b64decode(art_id)
-            http_matches = re.findall(rb"https?://[^\s\x00-\x1f\x7f-\xff]+", decoded_bytes)
-            if http_matches:
-                final_url = http_matches[0].decode('utf-8', errors='ignore')
-                final_url = re.sub(r"[^\w\-\.\/\?\=\&\%\:\#\+\~]+$", "", final_url)
-                if final_url.startswith("http") and "news.google.com" not in final_url:
-                    logger.info(f"[GNewsResolver] Method 1 (base64) resolved: {url[:45]}... -> {final_url}")
-                    return final_url
-    except Exception as b64_err:
-        logger.warning(f"[GNewsResolver] Method 1 base64 decode failed: {b64_err}")
-
-    # Method 2: Use googlenewsdecoder library
-    try:
-        from googlenewsdecoder import gnewsdecoder
-        res = gnewsdecoder(url)
-        if isinstance(res, dict) and res.get("status") and res.get("decoded_url"):
-            decoded_url = res["decoded_url"]
-            if decoded_url.startswith("http") and "news.google.com" not in decoded_url:
-                logger.info(f"[GNewsResolver] Method 2 (decoder) resolved: {url[:45]}... -> {decoded_url}")
-                return decoded_url
-    except Exception as dec_err:
-        logger.warning(f"[GNewsResolver] Method 2 decoder failed: {dec_err}")
-
-    # Method 3: HTTP GET with follow_redirects=True & HTML canonical parsing
     try:
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            )
         }
         with httpx.Client(timeout=10, follow_redirects=True, headers=headers) as client:
             resp = client.get(url)
-            final_url = str(resp.url)
-            if final_url.startswith("http") and "news.google.com" not in final_url:
-                logger.info(f"[GNewsResolver] Method 3 (redirect) resolved: {url[:45]}... -> {final_url}")
-                return final_url
-
-            soup = BeautifulSoup(resp.text, "html.parser")
-            canonical = soup.find("link", rel="canonical")
-            if canonical and canonical.get("href"):
-                can_href = canonical["href"]
-                if can_href.startswith("http") and "news.google.com" not in can_href:
-                    logger.info(f"[GNewsResolver] Method 3 (canonical) resolved: {url[:45]}... -> {can_href}")
-                    return can_href
-
-            og_url = soup.find("meta", property="og:url")
-            if og_url and og_url.get("content"):
-                og_href = og_url["content"]
-                if og_href.startswith("http") and "news.google.com" not in og_href:
-                    logger.info(f"[GNewsResolver] Method 3 (og:url) resolved: {url[:45]}... -> {og_href}")
-                    return og_href
-    except Exception as http_err:
-        logger.warning(f"[GNewsResolver] Method 3 HTTP fetch failed: {http_err}")
-
-    return url
+            resolved = str(resp.url)
+            logger.info(f"Resolved Google News URL: {url} -> {resolved}")
+            return resolved
+    except Exception as e:
+        logger.warning(f"Could not resolve GNews redirect for {url}: {e}")
+        return url
 
 def _scrape_firecrawl(url: str, max_content_length: int = 30000) -> dict:
     """Scrape using Firecrawl API (bot-bypass capable)."""
@@ -150,6 +101,7 @@ def _scrape_jina(url: str, max_content_length: int = 30000) -> dict:
         if len(content) > max_content_length:
             content = content[:max_content_length]
 
+        # Basic title extraction from first markdown header
         title = ""
         lines = content.splitlines()
         for line in lines:
@@ -249,6 +201,7 @@ def scrape_url(url: str, max_content_length: int = 30000) -> dict:
     """
     resolved_target_url = resolve_gnews_url(url)
 
+    # TIER 1: Try Firecrawl first (if enabled)
     if FIRECRAWL_ENABLED and FIRECRAWL_API_KEY:
         logger.info(f"[TIER 1] Scraping via Firecrawl: {resolved_target_url}")
         result = _scrape_firecrawl(resolved_target_url, max_content_length)
@@ -256,11 +209,13 @@ def scrape_url(url: str, max_content_length: int = 30000) -> dict:
             return result
         logger.warning(f"[TIER 1] Firecrawl failed ({result.get('error')}), falling back to Jina/Native...")
 
+    # TIER 2: Try Jina Reader
     logger.info(f"[TIER 2] Scraping via Jina Reader: {resolved_target_url}")
     jina_res = _scrape_jina(resolved_target_url, max_content_length)
     if jina_res["status"] == "success":
         return jina_res
     logger.warning(f"[TIER 2] Jina failed ({jina_res.get('error')}), falling back to native...")
 
+    # TIER 3: Native scraper fallback
     logger.info(f"[TIER 3] Scraping natively: {resolved_target_url}")
     return _scrape_native(resolved_target_url, max_content_length)

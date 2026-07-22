@@ -1,345 +1,32 @@
 import os
-import re
-import json
 import logging
 import threading
-import datetime
-import time
-import httpx
-from http.server import BaseHTTPRequestHandler, HTTPServer
 import urllib.request
 import urllib.error
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
-from telegram.error import BadRequest
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, CallbackQueryHandler
-from typing import Optional
+from telegram.ext import Application
 
-
-def _get_direct_confirm_keyboard(platform_drafts):
-    keyboard = []
-    for plat in platform_drafts:
-        keyboard.append([
-            InlineKeyboardButton(f"✅ Confirm & Post {plat.upper()}", callback_data=f"confirm_platform:{plat}")
-        ])
-    return InlineKeyboardMarkup(keyboard)
-
-
-
-from dotenv import load_dotenv
-from google.genai import types as genai_types
-from google.antigravity.tools.tool_runner import ToolWithSchema
-
-from config import (
-    BASE_DIR, SESSIONS_DIR, SKILLS_DIR, SESSION_MAP_PATH,
-    OPENROUTER_API_KEY, OPENROUTER_FALLBACK_MODEL, OPENROUTER_BASE_URL,
-    GEMINI_KEYS, get_system_instructions_template
-)
+from config import TELEGRAM_BOT_TOKEN, OPENROUTER_API_KEY, OPENROUTER_PROXY_PORT
 from storage.db import init_db
-import storage.memory_repository as memory
-import storage.location_repository as location_repo
-import storage.draft_repository as draft_repo
+from ui.telegram_bot import register_telegram_handlers
 
-from tools.web_scraper import scrape_url
-from tools.search_engine import search_web, fetch_gnews_articles
-from tools.location_service import reverse_geocode_location, _get_weather_forecast, _get_extended_weather_forecast
-from tools.apify_service import run_apify_actor
-from tools.publisher_service import (
-    save_draft_to_airtable,
-    save_thread_posts_to_airtable,
-    _prepare_drive_image_for_airtable,
-    _upload_article_dump_to_github
-)
-from tools import save_user_fact, update_user_preference
+logger = logging.getLogger("aura.main")
 
-# Set up logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-# Import Antigravity SDK
-try:
-    from google.antigravity import Agent, LocalAgentConfig, LocalOpenAIAgentConfig, types
-    from google.antigravity.hooks import policy
-except ImportError as e:
-    logger.error("=" * 80)
-    logger.error("RALAT IMPORT: Pustaka 'google-antigravity' tidak dapat diimport.")
-    logger.error("Kod ini AKAN BERJALAN SEMPURNA apabila di-deploy ke VPS Linux (Tencent SG)!")
-    logger.error("=" * 80)
-    raise e
-
-# ─── Per-user Debug State ─────────────────────────────────────────────────────
-# Stores user_id -> True/False. Default: False (debug off)
-DEBUG_USERS: dict = {}
-
-
-# ─── Session Map Helpers ───────────────────────────────────────────────────────
-
-def _load_session_map() -> dict:
-    if os.path.exists(SESSION_MAP_PATH):
-        try:
-            with open(SESSION_MAP_PATH, "r") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            return {}
-    return {}
-
-
-def _save_session_map(session_map: dict) -> None:
-    try:
-        with open(SESSION_MAP_PATH, "w") as f:
-            json.dump(session_map, f)
-    except OSError as e:
-        logger.error(f"Failed to save session map: {e}")
-
-
-def _get_conv_id_for_user(user_id: int, prefix: str = "") -> str | None:
-    session_map = _load_session_map()
-    key = f"{prefix}{user_id}"
-    conv_id = session_map.get(key)
-    if conv_id:
-        session_path = os.path.join(SESSIONS_DIR, conv_id)
-        if os.path.isdir(session_path):
-            return conv_id
-        logger.warning(f"Session folder missing for user {user_id} ({prefix}), starting fresh.")
-    return None
-
-
-def _register_conv_id_for_user(user_id: int, conv_id: str, prefix: str = "") -> None:
-    session_map = _load_session_map()
-    session_map[f"{prefix}{user_id}"] = conv_id
-    _save_session_map(session_map)
-
-
-# ─── Response Cleaner ─────────────────────────────────────────────────────────
-
-# Strip markdown headers that expose internal reasoning in normal mode
-_REASONING_PATTERN = re.compile(
-    r"^#{1,3}\s*(Ringkasan Penaakulan|Proses Delegasi|Analisis|Reasoning|"
-    r"Keputusan|Delegation|Tool Call|Internal Analysis|Chain.of.Thought|"
-    r"Debug|Langkah|Delegasi)[^\n]*\n?",
-    re.IGNORECASE | re.MULTILINE
-)
-
-
-def _clean_response(text: str) -> str:
-    """Strip internal reasoning headers for normal (non-debug) users."""
-    cleaned = _REASONING_PATTERN.sub("", text)
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return cleaned.strip()
-
-
-# ─── Build Agent Configs ───────────────────────────────────────────────────────
-
-def _get_dynamic_instructions() -> str:
-    """Inject current date, time, and day of the week dynamically into SYSTEM_INSTRUCTIONS."""
-    now = datetime.datetime.now()
-    day_names = ["Isnin", "Selasa", "Rabu", "Khamis", "Jumaat", "Sabtu", "Ahad"]
-    day_of_week = day_names[now.weekday()]
-    time_str = now.strftime("%I:%M %p")
-    date_str = now.strftime("%d %B %Y")
-    
-    dynamic_prefix = (
-        f"PENTING: Maklumat Waktu Semasa Sistem:\n"
-        f"- Hari ini: {day_of_week}\n"
-        f"- Tarikh hari ini: {date_str}\n"
-        f"- Waktu sekarang: {time_str} (Waktu Malaysia, UTC+8)\n"
-        f"Sila gunakan maklumat ini sebagai rujukan utama waktu/tarikh semasa.\n\n"
-    )
-    
-    # Load Long-term Memory summary from SQLite database
-    try:
-        from memory import get_memory_summary
-        ltm_summary = get_memory_summary()
-        memory_block = ltm_summary + "\n\n"
-    except Exception as e:
-        logger.error(f"Failed to load long-term memory summary: {e}")
-        memory_block = ""
-        
-    return dynamic_prefix + memory_block + SYSTEM_INSTRUCTIONS
-
-
-def _build_gemini_config(conv_id: str | None) -> LocalAgentConfig:
-    kwargs = dict(
-        save_dir=SESSIONS_DIR,
-        skills_paths=[SKILLS_DIR],
-        capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[scrape_url, search_web, save_user_fact, update_user_preference, run_apify_actor],
-        policies=[policy.allow_all()],
-        system_instructions=_get_dynamic_instructions(),
-    )
-    if conv_id:
-        kwargs["conversation_id"] = conv_id
-    return LocalAgentConfig(**kwargs)
-
-
-def _to_openai_tool(fn):
-    """Converts Gemini uppercase type schema to OpenAI-compatible lowercase type schema."""
-    decl = genai_types.FunctionDeclaration.from_callable_with_api_option(
-        callable=fn,
-        api_option="GEMINI_API"
-    )
-    schema = decl.parameters.model_dump(exclude_none=True) if decl.parameters else {"type": "OBJECT", "properties": {}}
-    
-    def _lowercase_types(node):
-        if isinstance(node, dict):
-            if "type" in node and isinstance(node["type"], str):
-                node["type"] = node["type"].lower()
-            for key, val in node.items():
-                _lowercase_types(val)
-        elif isinstance(node, list):
-            for item in node:
-                _lowercase_types(item)
-                
-    _lowercase_types(schema)
-    return ToolWithSchema(fn, schema)
-
-
-def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
-    kwargs = dict(
-        model=OPENROUTER_FALLBACK_MODEL,
-        base_url=OPENROUTER_BASE_URL,
-        save_dir=SESSIONS_DIR,
-        skills_paths=[SKILLS_DIR],
-        capabilities=types.CapabilitiesConfig(enable_subagents=True),
-        tools=[
-            _to_openai_tool(scrape_url),
-            _to_openai_tool(search_web),
-            _to_openai_tool(save_user_fact),
-            _to_openai_tool(update_user_preference),
-            _to_openai_tool(run_apify_actor),
-        ],
-        policies=[policy.allow_all()],
-        system_instructions=_get_dynamic_instructions(),
-    )
-    if conv_id:
-        kwargs["conversation_id"] = conv_id
-    return LocalOpenAIAgentConfig(**kwargs)
-
-
-
-# ─── Load Persona ──────────────────────────────────────────────────────────────
-
-SYSTEM_INSTRUCTIONS = get_system_instructions_template()
-
-# ─── Rate Limit Detection ──────────────────────────────────────────────────────
-
-RATE_LIMIT_SIGNALS = [
-    "429", "quota", "rate limit", "resource_exhausted",
-    "RESOURCE_EXHAUSTED", "too many requests", "quota exceeded"
-]
-
-
-def _is_rate_limit_error(error: Exception) -> bool:
-    msg = str(error).lower()
-    return any(sig.lower() in msg for sig in RATE_LIMIT_SIGNALS)
-
-
-current_key_idx = 0
-logger.info(f"Loaded {len(GEMINI_KEYS)} Gemini API keys for rotation.")
-
-
-
-# ─── Handlers ─────────────────────────────────────────────────────────────────
-
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await update.message.reply_html(
-        rf"Salam {user.mention_html()}! Saya <b>AURA</b>, personal AI supervisor anda. "
-        rf"Hantar sebarang mesej, arahan, atau pautan untuk saya bantu!"
-    )
-
-
-async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Toggle debug mode: /debug on | /debug off"""
-    user_id = update.effective_user.id
-    args = context.args
-
-    if args and args[0].lower() == "on":
-        DEBUG_USERS[user_id] = True
-        await update.message.reply_text(
-            "🔧 *Debug Mode: ON*\n\n"
-            "Saya akan tunjukkan reasoning, tool calls, dan delegation flow dalam setiap jawapan.\n\n"
-            "Taip `/debug off` untuk kembali ke format biasa.",
-            parse_mode="Markdown"
-        )
-    elif args and args[0].lower() == "off":
-        DEBUG_USERS[user_id] = False
-        await update.message.reply_text(
-            "✅ *Debug Mode: OFF*\n\n"
-            "Kembali ke format jawapan standard — ringkas dan bersih.",
-            parse_mode="Markdown"
-        )
-    else:
-        status = "ON 🔧" if DEBUG_USERS.get(user_id) else "OFF ✅"
-        await update.message.reply_text(
-            f"Debug mode sekarang: *{status}*\n\n"
-            f"Untuk tukar:\n`/debug on` — tunjuk reasoning & tool calls\n`/debug off` — format biasa",
-            parse_mode="Markdown"
-        )
-
-
-# ─── OpenRouter Local Proxy ──────────────────────────────────────────────────
+# ─── OpenRouter Local Reverse Proxy ──────────────────────────────────────────
 
 class OpenRouterProxyHandler(BaseHTTPRequestHandler):
+    """Local reverse proxy handler to inject OpenRouter credentials into local requests."""
     def do_POST(self):
         content_length = int(self.headers.get('Content-Length', 0))
         post_data = self.rfile.read(content_length)
-        
-        # Log request body to trace OpenRouter payload
-        with open("/tmp/openrouter_req.json", "wb") as f:
-            f.write(post_data)
-        logger.info(f"[OpenRouter Proxy] Received headers: {dict(self.headers)}")
-        logger.info(f"[OpenRouter Proxy] Post data length: {len(post_data)} bytes. First 500 chars: {post_data[:500]}")
-        
-        # Rewrite payload to inject image if a fresh image is available
-        import json
-        import base64
-        import time
-        try:
-            payload = json.loads(post_data.decode('utf-8'))
-            messages = payload.get("messages", [])
-            media_file = "/tmp/last_user_media.jpg"
-            mime_file = "/tmp/last_user_media_mime.txt"
-            if os.path.exists(media_file) and os.path.exists(mime_file) and messages:
-                mtime = os.path.getmtime(media_file)
-                if (time.time() - mtime) < 20.0:
-                    with open(media_file, "rb") as f:
-                        media_bytes = f.read()
-                    with open(mime_file, "r") as f:
-                        mime_type = f.read().strip()
-                    
-                    last_msg = messages[-1]
-                    if last_msg.get("role") == "user":
-                        orig_content = last_msg.get("content", "")
-                        if isinstance(orig_content, str):
-                            b64_data = base64.b64encode(media_bytes).decode('utf-8')
-                            img_url = f"data:{mime_type};base64,{b64_data}"
-                            last_msg["content"] = [
-                                {"type": "text", "text": orig_content},
-                                {"type": "image_url", "image_url": {"url": img_url}}
-                            ]
-                            payload["messages"][-1] = last_msg
-                            post_data = json.dumps(payload).encode('utf-8')
-                            logger.info(f"[OpenRouter Proxy] Successfully injected photo ({len(media_bytes)} bytes) into OpenRouter payload!")
-                            try:
-                                os.remove(media_file)
-                                os.remove(mime_file)
-                            except Exception:
-                                pass
-        except Exception as e:
-            logger.error(f"[OpenRouter Proxy] Failed to parse/rewrite payload: {e}")
 
-        # Inject API Key from env
-        api_key = os.environ.get("OPENROUTER_API_KEY", "")
+        api_key = OPENROUTER_API_KEY
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}"
         }
-        
+
         url = "https://openrouter.ai/api/v1/chat/completions"
         req = urllib.request.Request(
             url,
@@ -347,7 +34,7 @@ class OpenRouterProxyHandler(BaseHTTPRequestHandler):
             headers=headers,
             method="POST"
         )
-        
+
         try:
             with urllib.request.urlopen(req) as response:
                 self.send_response(response.status)
@@ -372,13 +59,15 @@ class OpenRouterProxyHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         logger.info(f"[OpenRouter Proxy] {format % args}")
 
-
 def _start_openrouter_proxy(port: int = 18080):
+    """Start local OpenRouter reverse proxy in a background daemon thread."""
     server = HTTPServer(('127.0.0.1', port), OpenRouterProxyHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
+    logger.info(f"OpenRouter reverse proxy server started on port {port}.")
     return server
 
+<<<<<<< HEAD
 
 def _send_safe_message(text: str, max_length: int = 4000) -> str:
     """Guard Telegram message length to avoid BadRequest text too long errors."""
@@ -2375,46 +2064,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
 
 
 # ─── Main ──────────────────────────────────────────────────────────────────────
+=======
+# ─── Application Entrypoint ───────────────────────────────────────────────────
+>>>>>>> f355bdb (refactor(ui): complete Phase 3 Telegram UI decoupling, integration & thin main entrypoint)
 
 def main():
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    token = TELEGRAM_BOT_TOKEN
     if not token or token == "your_telegram_bot_token_here":
-        logger.error("TELEGRAM_BOT_TOKEN is not configured in the .env file.")
+        logger.error("TELEGRAM_BOT_TOKEN is not configured in the environment.")
         return
 
-    # Start local OpenRouter reverse proxy to inject API keys in localharness requests
-    logger.info("Starting local OpenRouter reverse proxy on port 18080...")
-    _start_openrouter_proxy(port=18080)
+    # 1. Start local OpenRouter reverse proxy on port 18080
+    _start_openrouter_proxy(port=OPENROUTER_PROXY_PORT)
 
-    # Initialize SQLite long-term memory database
+    # 2. Initialize SQLite long-term memory & draft database
     try:
-        from memory import init_db
         init_db()
-        logger.info("Long-term SQLite memory database initialized successfully.")
+        logger.info("SQLite database initialized successfully.")
     except Exception as e:
-        logger.error(f"Failed to initialize long-term memory database on startup: {e}")
+        logger.error(f"Failed to initialize SQLite database on startup: {e}")
 
-
+    # 3. Build Telegram Application & register UI handlers
     application = Application.builder().token(token).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("debug", debug_command))
-    application.add_handler(CommandHandler("confirm", confirm_command))
-    application.add_handler(CommandHandler("sethome", sethome_command))
-    application.add_handler(CommandHandler("setrumah", sethome_command))
-    application.add_handler(CommandHandler("sethq", sethq_command))
-    application.add_handler(CommandHandler("setoffice", sethq_command))
-    application.add_handler(CallbackQueryHandler(handle_callback_query))
-    application.add_handler(MessageHandler(filters.LOCATION, handle_location))
-    application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.LOCATION, handle_location))
-    application.add_handler(MessageHandler(filters.Regex(r"^/s\d+$"), scrape_shortcut_command))
-    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO | filters.VOICE | filters.Document.ALL) & ~filters.COMMAND, handle_message))
+    register_telegram_handlers(application)
 
-
-
-
-    logger.info(f"AURA Bot starting. Primary: Gemini | Fallback: OpenRouter ({OPENROUTER_FALLBACK_MODEL})")
+    logger.info("AURA Agent Bot starting via modular UI & Supervisor Orchestrator...")
     application.run_polling()
-
 
 if __name__ == '__main__':
     main()
