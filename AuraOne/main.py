@@ -30,9 +30,27 @@ from dotenv import load_dotenv
 from google.genai import types as genai_types
 from google.antigravity.tools.tool_runner import ToolWithSchema
 
+from config import (
+    BASE_DIR, SESSIONS_DIR, SKILLS_DIR, SESSION_MAP_PATH,
+    OPENROUTER_API_KEY, OPENROUTER_FALLBACK_MODEL, OPENROUTER_BASE_URL,
+    GEMINI_KEYS, get_system_instructions_template
+)
+from storage.db import init_db
+import storage.memory_repository as memory
+import storage.location_repository as location_repo
+import storage.draft_repository as draft_repo
 
-# Load environment variables
-load_dotenv()
+from tools.web_scraper import scrape_url
+from tools.search_engine import search_web, fetch_gnews_articles
+from tools.location_service import reverse_geocode_location, _get_weather_forecast, _get_extended_weather_forecast
+from tools.apify_service import run_apify_actor
+from tools.publisher_service import (
+    save_draft_to_airtable,
+    save_thread_posts_to_airtable,
+    _prepare_drive_image_for_airtable,
+    _upload_article_dump_to_github
+)
+from tools import save_user_fact, update_user_preference
 
 # Set up logging
 logging.basicConfig(
@@ -52,25 +70,10 @@ except ImportError as e:
     logger.error("=" * 80)
     raise e
 
-from tools import scrape_url, search_web, save_user_fact, update_user_preference, run_apify_actor
-
-# ─── Directories ──────────────────────────────────────────────────────────────
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
-SKILLS_DIR = os.path.join(BASE_DIR, "skills")
-os.makedirs(SESSIONS_DIR, exist_ok=True)
-os.makedirs(SKILLS_DIR, exist_ok=True)
-
-SESSION_MAP_PATH = os.path.join(SESSIONS_DIR, "user_session_map.json")
-
 # ─── Per-user Debug State ─────────────────────────────────────────────────────
 # Stores user_id -> True/False. Default: False (debug off)
 DEBUG_USERS: dict = {}
 
-# ─── Model Config ─────────────────────────────────────────────────────────────
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash"))
-OPENROUTER_BASE_URL = "http://127.0.0.1:18080"
 
 # ─── Session Map Helpers ───────────────────────────────────────────────────────
 
@@ -219,16 +222,7 @@ def _build_openrouter_config(conv_id: str | None) -> LocalOpenAIAgentConfig:
 
 # ─── Load Persona ──────────────────────────────────────────────────────────────
 
-PERSONA_PATH = os.path.join(BASE_DIR, "persona.txt")
-if os.path.exists(PERSONA_PATH):
-    with open(PERSONA_PATH, "r") as f:
-        SYSTEM_INSTRUCTIONS = f.read()
-else:
-    SYSTEM_INSTRUCTIONS = (
-        "You are AURA, a concise personal AI supervisor. "
-        "Reply in short, clear answers. Never show reasoning or internal steps. "
-        "Use emojis naturally. Speak Malay by default."
-    )
+SYSTEM_INSTRUCTIONS = get_system_instructions_template()
 
 # ─── Rate Limit Detection ──────────────────────────────────────────────────────
 
@@ -243,23 +237,9 @@ def _is_rate_limit_error(error: Exception) -> bool:
     return any(sig.lower() in msg for sig in RATE_LIMIT_SIGNALS)
 
 
-# ─── Gemini Keys for Rotation ────────────────────────────────────────────────
-GEMINI_KEYS = []
-main_key = os.environ.get("GEMINI_API_KEY", "")
-if main_key:
-    GEMINI_KEYS.append(main_key)
-for i in range(1, 11):
-    val = os.environ.get(f"GEMINI_API_KEY_{i}", "")
-    if val and val not in GEMINI_KEYS:
-        GEMINI_KEYS.append(val)
-
-# Default fallback if no keys configured
-if not GEMINI_KEYS:
-    GEMINI_KEYS.append("DUMMY_KEY")
-
 current_key_idx = 0
-COOLDOWN_KEYS = {}  # Cache for rate-limited API keys with expiration timestamps
 logger.info(f"Loaded {len(GEMINI_KEYS)} Gemini API keys for rotation.")
+
 
 
 # ─── Handlers ─────────────────────────────────────────────────────────────────

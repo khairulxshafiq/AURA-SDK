@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import os
 import re
 import time
@@ -334,337 +335,74 @@ def search_web(query: str, num_results: int = 5) -> dict:
         "results": results,
         "count": len(results)
     }
+=======
+# Façade module for backward compatibility
+# Re-exports all atomic tools from tools.*
 
+import storage.memory_repository as memory_repo
+>>>>>>> fae0967 (refactor(core): complete Phase 1 foundation, storage repository pattern & atomic tools layer)
 
+from tools.web_scraper import (
+    _scrape_firecrawl,
+    _scrape_jina,
+    _scrape_native,
+    resolve_gnews_url,
+    scrape_url,
+)
+from tools.search_engine import (
+    search_web,
+    fetch_gnews_articles,
+)
+from tools.location_service import (
+    reverse_geocode_location,
+    _get_weather_forecast,
+    _get_extended_weather_forecast,
+)
+from tools.apify_service import (
+    run_apify_actor,
+)
+from tools.publisher_service import (
+    _get_gdrive_access_token,
+    upload_to_drive,
+    save_draft_to_airtable,
+    save_thread_posts_to_airtable,
+    _host_on_github,
+    _upload_article_dump_to_github,
+    _prepare_drive_image_for_airtable,
+)
+
+# Tool wrappers for LLM invocation
 def save_user_fact(fact_content: str, category: str = "general") -> str:
-    """Simpan satu fakta penting atau maklumat baru yang dipelajari tentang pengguna (Matrol/Khairulshafiq) atau projek ke dalam memori jangka panjang SQLite.
-    Gunakan tool ini apabila pengguna memberikan info peribadi yang penting untuk diingati di masa hadapan.
-    """
-    import memory
-    success = memory.save_fact(fact_content, category)
+    """Simpan satu fakta penting atau maklumat baru yang dipelajari tentang pengguna ke memori jangka panjang."""
+    success = memory_repo.save_fact(fact_content, category)
     if success:
         return f"Berjaya menyimpan fakta baru ke dalam memori: '{fact_content}'"
-    return f"Fakta tersebut sudah wujud di dalam memori."
-
+    return "Fakta tersebut sudah wujud di dalam memori."
 
 def update_user_preference(key: str, value: str) -> str:
-    """Kemaskini preferensi atau konfigurasi pengguna dalam memori jangka panjang SQLite (cth: owner_name, working_style, dsb).
-    Gunakan tool ini apabila pengguna menukar tetapan atau cara kerja kegemaran mereka.
-    """
-    import memory
-    memory.update_preference(key, value)
+    """Kemaskini preferensi atau konfigurasi pengguna dalam memori jangka panjang."""
+    memory_repo.update_preference(key, value)
     return f"Berjaya mengemaskini preferensi '{key}' kepada '{value}'."
 
-
-# ─── Google Drive & Airtable Helpers ──────────────────────────────────────────
-
-GDRIVE_API = "https://www.googleapis.com/drive/v3"
-GDRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3"
-TOKEN_URL = "https://oauth2.googleapis.com/token"
-
-def _get_gdrive_access_token() -> Optional[str]:
-    import json
-    sa_json_str = os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", "")
-    if not sa_json_str:
-        return None
-    try:
-        sa_info = json.loads(sa_json_str)
-        from google.oauth2 import service_account
-        import google.auth.transport.requests
-        credentials = service_account.Credentials.from_service_account_info(
-            sa_info,
-            scopes=["https://www.googleapis.com/auth/drive"]
-        )
-        request = google.auth.transport.requests.Request()
-        credentials.refresh(request)
-        return credentials.token
-    except Exception as e:
-        logger.error(f"Failed to get Google Drive access token: {e}")
-        return None
-
-def upload_to_drive(content_bytes: bytes, filename: str, mime_type: str = "image/jpeg", folder_id: str = None) -> dict:
-    import json
-    folder_id = folder_id or os.environ.get("GDRIVE_FOLDER_ID", "1Apv70Qwp2iF0405kn4mmzaB1UmXkWwqM")
-    token = _get_gdrive_access_token()
-    if not token:
-        return {"status": "error", "error": "Google Drive credentials not set"}
-    try:
-        headers = {"Authorization": f"Bearer {token}"}
-        metadata = json.dumps({
-            "name": filename,
-            "parents": [folder_id],
-        })
-        boundary = b"aura_boundary"
-        body = (
-            b"--" + boundary + b"\r\n"
-            b"Content-Type: application/json; charset=UTF-8\r\n\r\n" +
-            metadata.encode() + b"\r\n"
-            b"--" + boundary + b"\r\n"
-            b"Content-Type: " + mime_type.encode() + b"\r\n\r\n" +
-            content_bytes + b"\r\n"
-            b"--" + boundary + b"--"
-        )
-        with httpx.Client(timeout=30) as client:
-            resp = client.post(
-                f"{GDRIVE_UPLOAD_API}/files",
-                params={"uploadType": "multipart", "fields": "id,name,webViewLink"},
-                content=body,
-                headers={
-                    **headers,
-                    "Content-Type": f"multipart/related; boundary=aura_boundary"
-                }
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            file_id = data.get("id")
-            
-            # Make the file public so Airtable can download it as an attachment
-            perm_url = f"{GDRIVE_API}/files/{file_id}/permissions"
-            perm_payload = {"role": "reader", "type": "anyone"}
-            client.post(perm_url, json=perm_payload, headers=headers)
-            
-        return {
-            "status": "success",
-            "file_id": file_id,
-            "name": data.get("name"),
-            "link": f"https://docs.google.com/uc?export=download&id={file_id}"
-        }
-    except Exception as e:
-        logger.error(f"upload_to_drive error: {e}")
-        return {"status": "error", "error": str(e)}
-
-
-def save_draft_to_airtable(
-    title: str,
-    caption: str,
-    platform: str = "facebook",
-    style: str = "santai_bercerita",
-    source_url: str = "",
-    image_url: str = "",
-    brand: str = "",
-    created_by: str = "AURA (SDK)",
-    status: str = "Draft",
-    hashtags: str = "",
-    scheduled_time: str = "",
-    content_type: str = "Article",
-    original_price: str = "",
-    seller_location: str = ""
-) -> dict:
-    import json
-    import os
-    import httpx
-    import logging
-    logger = logging.getLogger(__name__)
-
-    api_key = os.environ.get("AIRTABLE_API_KEY", "")
-    base_id = os.environ.get("AIRTABLE_BASE_ID", "")
-    table_name = os.environ.get("AIRTABLE_TABLE_NAME", "Content Station")
-    if not api_key or not base_id:
-        return {"status": "error", "error": "Airtable credentials missing"}
-    if not brand:
-        brand = os.environ.get("DEFAULT_BRAND", "Sakluma")
-    url = f"https://api.airtable.com/v0/{base_id}/{table_name}"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    # Map platform names nicely
-    plat_name = "X" if platform.lower() in ["twitter", "x"] else platform.title()
-    
-    # Strip markdown bold/italic tags for clean social media reader layout
-    clean_caption = caption
-    if clean_caption:
-        clean_caption = clean_caption.replace("**", "").replace("*", "")
-        
-    fields = {
-        "Title": title,
-        "Caption": clean_caption,
-        "Platform": [plat_name],
-        "Post Status": status,
-        "Brand": brand,
-        "Content Type": content_type,
-        "Created By": created_by,
-        "Hashtags": hashtags,
-        "Scheduled Date": scheduled_time,
-        "Image file": [{"url": image_url}] if image_url else None,
-        "Gambar": [{"url": image_url}] if image_url else None,
-        "Original Price": original_price if original_price else None,
-        "Seller Location": seller_location if seller_location else None,
-        "Source URL": source_url if source_url else None,
-        "Product Link": source_url if source_url else None
-    }
-    fields = {k: v for k, v in fields.items() if v is not None}
-
-
-    try:
-        with httpx.Client(timeout=15) as client:
-            while True:
-                resp = client.post(url, headers=headers, json={"fields": fields, "typecast": True})
-                if resp.status_code == 200:
-                    break
-                elif resp.status_code == 422 and "UNKNOWN_FIELD_NAME" in resp.text:
-                    err_msg = resp.text
-                    removed = False
-                    for k in list(fields.keys()):
-                        if k in err_msg:
-                            logger.info(f"Field '{k}' not found in Airtable schema, removing it.")
-                            fields.pop(k, None)
-                            removed = True
-                    if not removed:
-                        resp.raise_for_status()
-                else:
-                    resp.raise_for_status()
-            
-            data = resp.json()
-            return {"status": "success", "record_id": data.get("id")}
-
-    except Exception as e:
-        logger.error(f"Airtable error: {e}")
-        return {"status": "error", "error": str(e)}
-
-
-def save_thread_posts_to_airtable(parent_record_id: str, posts: list[str], platform: str) -> dict:
-    """Save individual thread posts linked to the main Content Station record in Airtable."""
-    import os
-    import httpx
-    import logging
-    logger = logging.getLogger(__name__)
-
-    api_key = os.environ.get("AIRTABLE_API_KEY", "")
-    base_id = os.environ.get("AIRTABLE_BASE_ID", "")
-    table_name = "Thread Posts"
-    
-    if not api_key or not base_id:
-        return {"status": "error", "error": "Airtable credentials missing"}
-        
-    url = f"https://api.airtable.com/v0/{base_id}/{table_name}"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    
-    records = []
-    for idx, post_text in enumerate(posts, start=1):
-        records.append({
-            "fields": {
-                "Content Station": [parent_record_id],
-                "Post Text": post_text,
-                "Sequence": idx,
-                "Platform": "X" if platform.lower() in ["x", "twitter"] else platform.title()
-            }
-        })
-        
-    try:
-        with httpx.Client(timeout=15) as client:
-            resp = client.post(url, headers=headers, json={"records": records, "typecast": True})
-            resp.raise_for_status()
-            return {"status": "success"}
-    except Exception as e:
-        logger.error(f"Error saving thread posts to Airtable: {e}")
-        return {"status": "error", "error": str(e)}
-
-
-def run_apify_actor(actor_id: str, run_input: dict) -> dict:
-    """Run an Apify actor, wait for completion, and return the dataset items.
-    Useful for scraping social media platforms (X, Shopee, Instagram, etc.) where custom actors are needed.
-    
-    Args:
-        actor_id: The ID/name of the Apify actor (e.g. 'kaitoeasyapi/twitter-x-data-tweet-scraper-pay-per-result-cheapest').
-        run_input: A dictionary of key-value pairs containing the input parameters for the actor.
-    """
-    import os
-    import httpx
-    import time
-    import logging
-    logger = logging.getLogger(__name__)
-
-    token = os.environ.get("APIFY_API_TOKEN", "")
-    if not token:
-        return {"status": "error", "error": "APIFY_API_TOKEN is not configured in .env"}
-
-    logger.info(f"Running Apify actor '{actor_id}'...")
-    
-    # Ensure slash is replaced with tilde for URL formatting in Apify API
-    actor_id_url = actor_id.replace("/", "~")
-    
-    # Resolve shortened URLs (e.g., Shopee redirects) before passing to Apify
-    resolved_input = run_input.copy()
-    if "location" in resolved_input and isinstance(resolved_input["location"], str) and resolved_input["location"].startswith("http"):
-        try:
-            with httpx.Client(timeout=10, follow_redirects=True) as client:
-                resp = client.get(resolved_input["location"])
-                resolved_url = str(resp.url)
-                logger.info(f"Resolved redirect for location URL: {resolved_input['location']} -> {resolved_url}")
-                resolved_input["location"] = resolved_url
-        except Exception as e:
-            logger.warning(f"Could not resolve redirect: {e}")
-            
-    elif "startUrls" in resolved_input and isinstance(resolved_input["startUrls"], list):
-        for idx, entry in enumerate(resolved_input["startUrls"]):
-            if isinstance(entry, dict) and "url" in entry and entry["url"].startswith("http"):
-                try:
-                    with httpx.Client(timeout=10, follow_redirects=True) as client:
-                        resp = client.get(entry["url"])
-                        resolved_url = str(resp.url)
-                        logger.info(f"Resolved redirect for startUrls[{idx}]: {entry['url']} -> {resolved_url}")
-                        resolved_input["startUrls"][idx]["url"] = resolved_url
-                except Exception as e:
-                    logger.warning(f"Could not resolve redirect: {e}")
-
-    # 1. Trigger Actor run
-    url_run = f"https://api.apify.com/v2/acts/{actor_id_url}/runs"
-    try:
-        with httpx.Client(timeout=30) as client:
-            resp = client.post(url_run, params={"token": token}, json=resolved_input)
-            resp.raise_for_status()
-            run_data = resp.json()["data"]
-    except Exception as e:
-        return {"status": "error", "error": f"Failed to trigger Apify actor: {str(e)}"}
-
-    run_id = run_data["id"]
-    dataset_id = run_data["defaultDatasetId"]
-    logger.info(f"Actor run started. Run ID: {run_id}, Dataset ID: {dataset_id}")
-
-    # 2. Poll for completion
-    url_status = f"https://api.apify.com/v2/actor-runs/{run_id}"
-    max_retries = 30  # 5 minutes max
-    for attempt in range(max_retries):
-        time.sleep(10)
-        try:
-            with httpx.Client(timeout=15) as client:
-                resp = client.get(url_status, params={"token": token})
-                resp.raise_for_status()
-                status_data = resp.json()["data"]
-                status = status_data["status"]
-                logger.info(f"Attempt {attempt+1}: Run status = {status}")
-                if status == "SUCCEEDED":
-                    break
-                elif status in ["FAILED", "ABORTED", "TIMED-OUT"]:
-                    return {"status": "error", "error": f"Actor run failed with status: {status}"}
-        except Exception as e:
-            logger.warning(f"Error checking run status: {str(e)}")
-    else:
-        return {"status": "error", "error": "Actor run timed out"}
-
-    # 3. Fetch Dataset items
-    url_dataset = f"https://api.apify.com/v2/datasets/{dataset_id}/items"
-    try:
-        with httpx.Client(timeout=30) as client:
-            resp = client.get(url_dataset, params={"token": token})
-            resp.raise_for_status()
-            items = resp.json()
-            return {
-                "status": "success",
-                "actorId": actor_id,
-                "runId": run_id,
-                "datasetId": dataset_id,
-                "items": items,
-                "count": len(items)
-            }
-    except Exception as e:
-        return {"status": "error", "error": f"Failed to fetch dataset items: {str(e)}"}
-
-
-
-
+__all__ = [
+    "_scrape_firecrawl",
+    "_scrape_jina",
+    "_scrape_native",
+    "resolve_gnews_url",
+    "scrape_url",
+    "search_web",
+    "fetch_gnews_articles",
+    "reverse_geocode_location",
+    "_get_weather_forecast",
+    "_get_extended_weather_forecast",
+    "run_apify_actor",
+    "_get_gdrive_access_token",
+    "upload_to_drive",
+    "save_draft_to_airtable",
+    "save_thread_posts_to_airtable",
+    "_host_on_github",
+    "_upload_article_dump_to_github",
+    "_prepare_drive_image_for_airtable",
+    "save_user_fact",
+    "update_user_preference",
+]
