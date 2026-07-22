@@ -113,9 +113,10 @@ def _get_conv_id_for_user(user_id: int, prefix: str = "") -> str | None:
     conv_id = session_map.get(key)
     if conv_id:
         session_path = os.path.join(SESSIONS_DIR, conv_id)
-        if os.path.isdir(session_path):
+        db_path = os.path.join(SESSIONS_DIR, f"{conv_id}.db")
+        if os.path.exists(session_path) or os.path.exists(db_path):
             return conv_id
-        logger.warning(f"Session folder missing for user {user_id} ({prefix}), starting fresh.")
+        logger.warning(f"Session data missing for user {user_id} ({prefix}), starting fresh.")
     return None
 
 def _register_conv_id_for_user(user_id: int, conv_id: str, prefix: str = "") -> None:
