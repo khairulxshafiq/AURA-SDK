@@ -23,3 +23,7 @@ Reference/
 !AuraOne/LUMA_MEMORY.md
 .luma_memory.md
 
+# Temp & Dump directories
+AuraOne/dumps/*
+AuraOne/images/*
+*.bak
