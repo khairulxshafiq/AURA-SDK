@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-22)
+* **Enforced Strict Git & Branching Rules**: Enforced strict feature branching rule (`feature/description-yyyy-mm-dd` or `fix/description-yyyy-mm-dd`). Direct commits to `main` are strictly forbidden. All changes must be tested on feature branches before merging.
 * **Consolidated Memory Path**: Moved `LUMA_MEMORY.md` into `AuraOne/LUMA_MEMORY.md` so that all application logic, persona, skills, and memory state tracking are grouped together inside the `AuraOne/` workspace directory.
 * **Created Global Repository Guide `AGENTS.md`**: Placed `AGENTS.md` in the project root directory (`~/projects/AURA-SDK/AGENTS.md`) defining core architecture, index, blueprint rules, and VPS sync guidelines.
 * **n8n Facebook Text-Only Posting Rule Deployed**: Updated n8n workflow `qbOJJ5lJ3ybq6iqx` on Railway (`auraone-n8nauto.up.railway.app`) via direct PostgreSQL DB manipulation. Added `If Has Image (FB)` node to dynamically branch between `/photos` (for image drafts) and `/feed` (for text-only drafts) endpoints, fixing `(#100) Parameter url should be a valid URL` errors completely.
