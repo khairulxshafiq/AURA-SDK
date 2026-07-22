@@ -67,8 +67,6 @@ def _start_openrouter_proxy(port: int = 18080):
     logger.info(f"OpenRouter reverse proxy server started on port {port}.")
     return server
 
-<<<<<<< HEAD
-
 def _send_safe_message(text: str, max_length: int = 4000) -> str:
     """Guard Telegram message length to avoid BadRequest text too long errors."""
     if len(text) > max_length:
@@ -947,13 +945,15 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         )
         logger.info(f"Saved content draft for user {user_id}: {title} (counter_val={counter})")
 
-        # Upload text dump to GitHub in the background
+        # Upload text dump to Google Drive in the background
+        from tools import upload_article_dump_to_drive
         import threading
         threading.Thread(
-            target=_upload_article_dump_to_github,
+            target=upload_article_dump_to_drive,
             args=(title, master_article, hashtags, source_url, response_text, counter),
             daemon=True
         ).start()
+
 
 
 
@@ -1053,143 +1053,8 @@ async def _parse_schedule_time(natural_text: str) -> Optional[str]:
 
 
 
-def _get_next_image_filename(image_url: str, counter: int) -> tuple[str, str]:
-    """Return a standardized filename (e.g. web-1.jpg) and its mime type for the given counter."""
-    # Detect extension and mime type
-    ext = "jpg"
-    mime = "image/jpeg"
-    
-    url_lower = image_url.lower()
-    if ".png" in url_lower:
-        ext = "png"
-        mime = "image/png"
-    elif ".webp" in url_lower:
-        ext = "webp"
-        mime = "image/webp"
-        
-    filename = f"web-{counter}.{ext}"
-    return filename, mime
+from tools.publisher_service import _prepare_drive_image_for_airtable
 
-
-async def _prepare_drive_image_for_airtable(image_url: str, telegram_file_id: str, counter: int, context) -> str:
-    """Download image (via Telegram cache if available, or direct fallback) and host it on GitHub to return a public URL for Airtable compatibility."""
-    if not image_url and not telegram_file_id:
-        return ""
-    try:
-        img_bytes = None
-        
-        # 1. Try downloading via Telegram file cache first (bypasses all 403 blocks)
-        if telegram_file_id and context:
-            try:
-                logger.info(f"Downloading image from Telegram cache using file_id: {telegram_file_id}")
-                telegram_file = await context.bot.get_file(telegram_file_id)
-                file_bytearray = await telegram_file.download_as_bytearray()
-                img_bytes = bytes(file_bytearray)
-                logger.info(f"Downloaded {len(img_bytes)} bytes from Telegram cache.")
-            except Exception as tg_err:
-                logger.warning(f"Telegram file download failed, falling back to HTTP: {tg_err}")
-
-        # 2. HTTP Fallback if Telegram cache is empty or failed
-        if not img_bytes and image_url:
-            import httpx
-            logger.info(f"Downloading image via direct HTTP request: {image_url}")
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            }
-            with httpx.Client(timeout=30) as client:
-                resp = client.get(image_url, headers=headers)
-                resp.raise_for_status()
-                img_bytes = resp.content
-
-        if not img_bytes:
-            return image_url
-
-        filename, mime = _get_next_image_filename(image_url, counter)
-        logger.info(f"Standardized filename for GitHub: {filename}")
-
-        # Host image on GitHub (bypasses GDrive quota issues)
-        github_link = _host_on_github(img_bytes, filename, "images")
-        if github_link:
-            return github_link
-    except Exception as e:
-        logger.error(f"Failed to process image bypass: {e}")
-    return image_url
-
-
-def _host_on_github(content_bytes: bytes, filename: str, subfolder: str) -> str:
-    """Save content locally in AuraOne/{subfolder}/ and push to GitHub repository to host it publicly."""
-    import os
-    import subprocess
-    import time
-    
-    target_dir = f"/home/ubuntu/projects/AURA-SDK/AuraOne/{subfolder}"
-    os.makedirs(target_dir, exist_ok=True)
-    
-    filepath = os.path.join(target_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(content_bytes)
-        
-    try:
-        # Run git commands to commit and push the file
-        subprocess.run(["git", "add", f"AuraOne/{subfolder}/{filename}"], cwd="/home/ubuntu/projects/AURA-SDK", check=True)
-        subprocess.run(["git", "commit", "-m", f"chore: host {subfolder}/{filename}"], cwd="/home/ubuntu/projects/AURA-SDK", check=True)
-        subprocess.run(["git", "push", "origin", "main"], cwd="/home/ubuntu/projects/AURA-SDK", check=True)
-        
-        # Give GitHub raw CDN 2 seconds to update
-        time.sleep(2)
-        
-        # Return the public GitHub raw URL
-        raw_url = f"https://raw.githubusercontent.com/khairulxshafiq/AURA-SDK/main/AuraOne/{subfolder}/{filename}"
-        logger.info(f"File successfully hosted on GitHub: {raw_url}")
-        return raw_url
-    except Exception as git_err:
-        logger.error(f"GitHub hosting failed for {subfolder}/{filename}: {git_err}")
-        return ""
-
-
-def _upload_article_dump_to_github(
-    title: str,
-    master_article: str,
-    hashtags: str,
-    source_url: str,
-    response_text: str,
-    counter: int
-) -> None:
-    """Formulate the full article dump containing master article and drafts, and host it on GitHub dumps/ folder."""
-    try:
-        import re
-        
-        # Parse platform drafts from response_text using regex
-        fb_match = re.search(r"\[DRAFT_FB:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        threads_match = re.search(r"\[DRAFT_THREADS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        twitter_match = re.search(r"\[DRAFT_TWITTER:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        lemon8_match = re.search(r"\[DRAFT_LEMON8:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        
-        fb_draft = fb_match.group(1).strip() if fb_match else "N/A"
-        threads_draft = threads_match.group(1).strip() if threads_match else "N/A"
-        twitter_draft = twitter_match.group(1).strip() if twitter_match else "N/A"
-        lemon8_draft = lemon8_match.group(1).strip() if lemon8_match else "N/A"
-        
-        dump_content = (
-            f"SOURCE URL: {source_url}\n"
-            f"TITLE: {title}\n"
-            f"HASHTAGS: {hashtags}\n\n"
-            f"=========================================\n"
-            f"MASTER ARTICLE:\n{master_article}\n\n"
-            f"=========================================\n"
-            f"FACEBOOK DRAFT:\n{fb_draft}\n\n"
-            f"=========================================\n"
-            f"THREADS DRAFT:\n{threads_draft}\n\n"
-            f"=========================================\n"
-            f"X / TWITTER DRAFT:\n{twitter_draft}\n\n"
-            f"=========================================\n"
-            f"LEMON8 DRAFT:\n{lemon8_draft}\n"
-        )
-        
-        filename = f"web-{counter}.txt"
-        _host_on_github(dump_content.encode("utf-8"), filename, "dumps")
-    except Exception as e:
-        logger.error(f"Error in _upload_article_dump_to_github: {e}")
 
 
 
@@ -2063,10 +1928,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
 
 
 
-# ─── Main ──────────────────────────────────────────────────────────────────────
-=======
 # ─── Application Entrypoint ───────────────────────────────────────────────────
->>>>>>> f355bdb (refactor(ui): complete Phase 3 Telegram UI decoupling, integration & thin main entrypoint)
+
 
 def main():
     token = TELEGRAM_BOT_TOKEN

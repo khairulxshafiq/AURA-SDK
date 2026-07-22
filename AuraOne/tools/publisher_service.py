@@ -3,7 +3,6 @@ import re
 import json
 import time
 import logging
-import subprocess
 import httpx
 from typing import Optional
 
@@ -33,7 +32,8 @@ def _get_gdrive_access_token() -> Optional[str]:
         logger.error(f"Failed to get Google Drive access token: {e}")
         return None
 
-def upload_to_drive(content_bytes: bytes, filename: str, mime_type: str = "image/jpeg", folder_id: str = None) -> dict:
+def upload_file_to_drive(file_bytes: bytes, filename: str, mime_type: str = "image/jpeg", folder_id: str = None) -> dict:
+    """Upload file bytes directly to Google Drive folder and set public read permission."""
     folder_id = folder_id or os.environ.get("GDRIVE_FOLDER_ID", "1Apv70Qwp2iF0405kn4mmzaB1UmXkWwqM")
     token = _get_gdrive_access_token()
     if not token:
@@ -51,7 +51,7 @@ def upload_to_drive(content_bytes: bytes, filename: str, mime_type: str = "image
             metadata.encode() + b"\r\n"
             b"--" + boundary + b"\r\n"
             b"Content-Type: " + mime_type.encode() + b"\r\n\r\n" +
-            content_bytes + b"\r\n"
+            file_bytes + b"\r\n"
             b"--" + boundary + b"--"
         )
         with httpx.Client(timeout=30) as client:
@@ -79,7 +79,92 @@ def upload_to_drive(content_bytes: bytes, filename: str, mime_type: str = "image
             "link": f"https://docs.google.com/uc?export=download&id={file_id}"
         }
     except Exception as e:
-        logger.error(f"upload_to_drive error: {e}")
+        logger.error(f"upload_file_to_drive error: {e}")
+        return {"status": "error", "error": str(e)}
+
+def upload_to_drive(content_bytes: bytes, filename: str, mime_type: str = "image/jpeg", folder_id: str = None) -> dict:
+    """Wrapper / alias for upload_file_to_drive for backwards compatibility."""
+    return upload_file_to_drive(content_bytes, filename, mime_type=mime_type, folder_id=folder_id)
+
+def delete_file_from_drive(file_id: str) -> dict:
+    """Delete a file from Google Drive given its file_id."""
+    token = _get_gdrive_access_token()
+    if not token:
+        return {"status": "error", "error": "Google Drive credentials not set"}
+    try:
+        headers = {"Authorization": f"Bearer {token}"}
+        with httpx.Client(timeout=15) as client:
+            resp = client.delete(f"{GDRIVE_API}/files/{file_id}", headers=headers)
+            resp.raise_for_status()
+        return {"status": "success", "file_id": file_id}
+    except Exception as e:
+        logger.error(f"delete_file_from_drive error: {e}")
+        return {"status": "error", "error": str(e)}
+
+def update_file_on_drive(file_id: str, new_bytes: bytes, mime_type: str = "application/octet-stream") -> dict:
+    """Update existing file content on Google Drive."""
+    token = _get_gdrive_access_token()
+    if not token:
+        return {"status": "error", "error": "Google Drive credentials not set"}
+    try:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Content-Type": mime_type
+        }
+        with httpx.Client(timeout=30) as client:
+            resp = client.patch(
+                f"{GDRIVE_UPLOAD_API}/files/{file_id}",
+                params={"uploadType": "media"},
+                content=new_bytes,
+                headers=headers
+            )
+            resp.raise_for_status()
+        return {"status": "success", "file_id": file_id}
+    except Exception as e:
+        logger.error(f"update_file_on_drive error: {e}")
+        return {"status": "error", "error": str(e)}
+
+def upload_article_dump_to_drive(
+    title: str,
+    master_article: str,
+    hashtags: str,
+    source_url: str,
+    response_text: str,
+    counter: int,
+    folder_id: str = None
+) -> dict:
+    """Formulate full article dump (.txt) and upload it directly to Google Drive."""
+    try:
+        fb_match = re.search(r"\[DRAFT_FB:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+        threads_match = re.search(r"\[DRAFT_THREADS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+        twitter_match = re.search(r"\[DRAFT_TWITTER:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+        lemon8_match = re.search(r"\[DRAFT_LEMON8:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
+
+        fb_draft = fb_match.group(1).strip() if fb_match else "N/A"
+        threads_draft = threads_match.group(1).strip() if threads_match else "N/A"
+        twitter_draft = twitter_match.group(1).strip() if twitter_match else "N/A"
+        lemon8_draft = lemon8_match.group(1).strip() if lemon8_match else "N/A"
+
+        dump_content = (
+            f"SOURCE URL: {source_url}\n"
+            f"TITLE: {title}\n"
+            f"HASHTAGS: {hashtags}\n\n"
+            f"=========================================\n"
+            f"MASTER ARTICLE:\n{master_article}\n\n"
+            f"=========================================\n"
+            f"FACEBOOK DRAFT:\n{fb_draft}\n\n"
+            f"=========================================\n"
+            f"THREADS DRAFT:\n{threads_draft}\n\n"
+            f"=========================================\n"
+            f"X / TWITTER DRAFT:\n{twitter_draft}\n\n"
+            f"=========================================\n"
+            f"LEMON8 DRAFT:\n{lemon8_draft}\n"
+        )
+
+        filename = f"web-{counter}.txt"
+        return upload_file_to_drive(dump_content.encode("utf-8"), filename, mime_type="text/plain", folder_id=folder_id)
+    except Exception as e:
+        logger.error(f"Error in upload_article_dump_to_drive: {e}")
         return {"status": "error", "error": str(e)}
 
 def save_draft_to_airtable(
@@ -197,69 +282,6 @@ def save_thread_posts_to_airtable(parent_record_id: str, posts: list[str], platf
         logger.error(f"Error saving thread posts to Airtable: {e}")
         return {"status": "error", "error": str(e)}
 
-def _host_on_github(content_bytes: bytes, filename: str, subfolder: str) -> str:
-    """Save content locally in AuraOne/{subfolder}/ and push to GitHub repository to host it publicly."""
-    target_dir = f"/home/ubuntu/projects/AURA-SDK/AuraOne/{subfolder}"
-    os.makedirs(target_dir, exist_ok=True)
-
-    filepath = os.path.join(target_dir, filename)
-    with open(filepath, "wb") as f:
-        f.write(content_bytes)
-
-    try:
-        subprocess.run(["git", "add", f"AuraOne/{subfolder}/{filename}"], cwd="/home/ubuntu/projects/AURA-SDK", check=True)
-        subprocess.run(["git", "commit", "-m", f"chore: host {subfolder}/{filename}"], cwd="/home/ubuntu/projects/AURA-SDK", check=True)
-        subprocess.run(["git", "push", "origin", "main"], cwd="/home/ubuntu/projects/AURA-SDK", check=True)
-
-        time.sleep(2)
-        raw_url = f"https://raw.githubusercontent.com/khairulxshafiq/AURA-SDK/main/AuraOne/{subfolder}/{filename}"
-        logger.info(f"File successfully hosted on GitHub: {raw_url}")
-        return raw_url
-    except Exception as git_err:
-        logger.error(f"GitHub hosting failed for {subfolder}/{filename}: {git_err}")
-        return ""
-
-def _upload_article_dump_to_github(
-    title: str,
-    master_article: str,
-    hashtags: str,
-    source_url: str,
-    response_text: str,
-    counter: int
-) -> None:
-    """Formulate full article dump and host it on GitHub dumps/ folder."""
-    try:
-        fb_match = re.search(r"\[DRAFT_FB:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        threads_match = re.search(r"\[DRAFT_THREADS:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        twitter_match = re.search(r"\[DRAFT_TWITTER:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-        lemon8_match = re.search(r"\[DRAFT_LEMON8:\s*(.+?)\]", response_text, re.IGNORECASE | re.DOTALL)
-
-        fb_draft = fb_match.group(1).strip() if fb_match else "N/A"
-        threads_draft = threads_match.group(1).strip() if threads_match else "N/A"
-        twitter_draft = twitter_match.group(1).strip() if twitter_match else "N/A"
-        lemon8_draft = lemon8_match.group(1).strip() if lemon8_match else "N/A"
-
-        dump_content = (
-            f"SOURCE URL: {source_url}\n"
-            f"TITLE: {title}\n"
-            f"HASHTAGS: {hashtags}\n\n"
-            f"=========================================\n"
-            f"MASTER ARTICLE:\n{master_article}\n\n"
-            f"=========================================\n"
-            f"FACEBOOK DRAFT:\n{fb_draft}\n\n"
-            f"=========================================\n"
-            f"THREADS DRAFT:\n{threads_draft}\n\n"
-            f"=========================================\n"
-            f"X / TWITTER DRAFT:\n{twitter_draft}\n\n"
-            f"=========================================\n"
-            f"LEMON8 DRAFT:\n{lemon8_draft}\n"
-        )
-
-        filename = f"web-{counter}.txt"
-        _host_on_github(dump_content.encode("utf-8"), filename, "dumps")
-    except Exception as e:
-        logger.error(f"Error in _upload_article_dump_to_github: {e}")
-
 def _get_next_image_filename(image_url: str, counter: int) -> tuple[str, str]:
     """Return a standardized filename (e.g. web-1.jpg) and its mime type for given counter."""
     ext = "jpg"
@@ -277,7 +299,7 @@ def _get_next_image_filename(image_url: str, counter: int) -> tuple[str, str]:
     return filename, mime
 
 async def _prepare_drive_image_for_airtable(image_url: str, telegram_file_id: str, counter: int, context) -> str:
-    """Download image (via Telegram cache if available, or direct fallback) and host it on GitHub to return a public URL."""
+    """Download image (via Telegram cache if available, or direct fallback) and upload to Google Drive to return a direct public URL for Airtable."""
     if not image_url and not telegram_file_id:
         return ""
     try:
@@ -307,11 +329,13 @@ async def _prepare_drive_image_for_airtable(image_url: str, telegram_file_id: st
             return image_url
 
         filename, mime = _get_next_image_filename(image_url, counter)
-        logger.info(f"Standardized filename for GitHub: {filename}")
+        logger.info(f"Standardized filename for Google Drive: {filename}")
 
-        github_link = _host_on_github(img_bytes, filename, "images")
-        if github_link:
-            return github_link
+        drive_res = upload_file_to_drive(img_bytes, filename, mime_type=mime)
+        if drive_res.get("status") == "success" and drive_res.get("link"):
+            return drive_res.get("link")
+        else:
+            logger.warning(f"Drive image upload returned non-success: {drive_res.get('error')}")
     except Exception as e:
-        logger.error(f"Failed to process image bypass: {e}")
+        logger.error(f"Failed to process image Drive upload: {e}")
     return image_url
