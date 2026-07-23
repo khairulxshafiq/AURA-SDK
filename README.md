@@ -134,7 +134,39 @@ To avoid confusion, we differentiate between the **AURA-SDK Codebase** and **LUM
 
 ---
 
-## 🚀 Running AURA Bot on VPS
+## �️ Git & PR Workflow for Contributors
+
+All changes to this repository must follow the safe workflow below, especially when LUMA, Cline, Copilot, or any automation agent is involved.
+
+### Required workflow
+1. Create or switch to a dedicated branch before editing files.
+2. Commit changes on that branch only.
+3. Open a Pull Request for review before merging into `main`.
+4. Do not merge directly to `main` without approval.
+5. If an agent cannot create a branch, it must stop and ask for confirmation instead of forcing a push or merge.
+
+### Suggested branch naming
+- `feature/description-yyyy-mm-dd`
+- `fix/issue-description-yyyy-mm-dd`
+- `backup/description-yyyy-mm-dd`
+
+### Example commands
+```bash
+git checkout -b feature/my-change
+git add .
+git commit -m "feat: describe change"
+git push -u origin feature/my-change
+```
+
+### PR checklist
+- Summary of what changed
+- Why it changed
+- Validation performed
+- No direct merge to `main`
+
+---
+
+## �🚀 Running AURA Bot on VPS
 
 AURA runs as a background service managed by `systemd`.
 
