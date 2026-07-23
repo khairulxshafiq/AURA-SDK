@@ -20,6 +20,7 @@ import storage.memory_repository as memory
 import storage.location_repository as location_repo
 import storage.draft_repository as draft_repo
 
+from tools.web_scraper import scrape_url
 from tools.search_engine import fetch_gnews_articles, search_web
 from tools.location_service import (
     reverse_geocode_location, _get_weather_forecast, _get_extended_weather_forecast
@@ -194,6 +195,102 @@ async def sethq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+async def _execute_direct_scrape_pipeline(url: str, user_id: int, chat_id: int, context, update):
+    """Direct Execution Pipeline for URL Scraping -> Master Article Generation -> UI Keyboards.
+    Bypasses SDK async subagent loop to avoid intermediate metadata JSON output."""
+    global current_key_idx
+    logger.info(f"[DirectPipeline] Executing direct scrape pipeline for {url} (user {user_id})...")
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    # 1. Direct Web Scraping using 3-Tier Scraper (Firecrawl -> Native -> Jina)
+    scraped = scrape_url(url)
+    if not isinstance(scraped, dict) or scraped.get("status") != "success":
+        err_msg = scraped.get("error", "Gagal mengekstrak kandungan laman web.") if isinstance(scraped, dict) else "Scrape failed"
+        await update.message.reply_text(f"⚠️ *Gagal mengekstrak URL*: {err_msg}", parse_mode="Markdown")
+        return
+
+    raw_title = scraped.get("title", "Artikel Berita")
+    raw_content = scraped.get("content", "")
+    image_url = scraped.get("image_url", "")
+    source_url = scraped.get("url", url)
+
+    if not raw_content or len(raw_content) < 50:
+        await update.message.reply_text("⚠️ Artikel yang di-scrape tidak mengandungi teks kandungan yang mencukupi.")
+        return
+
+    # 2. Direct Master Article Generation Prompt
+    prompt = (
+        f"Anda adalah Editor Konten Sakluma profesional.\n"
+        f"Tugas anda: Hasilkan Master Article (Format Sakluma) yang menarik, mesra pembaca, dan berkualiti tinggi berdasarkan kandungan artikel berikut.\n\n"
+        f"TAJUK ASAL: {raw_title}\n"
+        f"URL ASAL: {source_url}\n\n"
+        f"KANDUNGAN ARTIKEL:\n{raw_content[:4000]}\n\n"
+        f"Sila kembalikan Master Article dan MESTI menyertakan tag metadata [DRAFT_*] di bahagian AKHIR jawapan anda mengikut format tepat berikut:\n\n"
+        f"[DRAFT_TITLE: {raw_title}]\n"
+        f"[DRAFT_SOURCE_URL: {source_url}]\n"
+        f"[DRAFT_IMAGE: {image_url}]\n"
+        f"[DRAFT_HASHTAGS: #Sakluma #Trending #IsuSemasa]\n"
+        f"[DRAFT_MASTER_ARTICLE: Teks Master Article Sakluma lengkap di sini...]"
+    )
+
+    # 3. Call LLM directly (Gemini or OpenRouter Fallback)
+    generated_text = ""
+    num_keys = len(GEMINI_KEYS)
+    for attempt in range(num_keys):
+        active_key = GEMINI_KEYS[current_key_idx]
+        if memory.is_key_on_cooldown(active_key):
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
+        try:
+            from google import genai
+            client = genai.Client(api_key=active_key)
+            res = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+            if res and res.text:
+                generated_text = res.text
+                break
+        except Exception as err:
+            logger.warning(f"Direct pipeline Gemini key #{current_key_idx + 1} failed ({err})")
+            if "429" in str(err) or "quota" in str(err).lower():
+                memory.set_key_cooldown(active_key, 600.0)
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
+
+    if not generated_text and OPENROUTER_API_KEY:
+        try:
+            logger.info("Direct pipeline: falling back to OpenRouter for Master Article generation...")
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": OPENROUTER_FALLBACK_MODEL,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    generated_text = data["choices"][0]["message"]["content"]
+        except Exception as e:
+            logger.error(f"Direct pipeline OpenRouter fallback error: {e}")
+
+    if not generated_text:
+        generated_text = (
+            f"📰 *{raw_title}*\n\n{raw_content[:800]}...\n\n"
+            f"[DRAFT_TITLE: {raw_title}]\n"
+            f"[DRAFT_SOURCE_URL: {source_url}]\n"
+            f"[DRAFT_IMAGE: {image_url}]\n"
+            f"[DRAFT_HASHTAGS: #Sakluma #Berita]\n"
+            f"[DRAFT_MASTER_ARTICLE: {raw_content[:1500]}]"
+        )
+
+    # 4. Process draft tags, save to SQLite DB, send Photo Preview & Inline Keyboards
+    res = await _process_response_draft(user_id, chat_id, generated_text, context, update)
+    if res == "[DRAFT_SENT_WITH_KEYBOARD]":
+        return
+    clean = _clean_response(generated_text)
+    await _send_telegram_msg(update, clean, parse_mode="Markdown")
+
 async def scrape_shortcut_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     try:
@@ -204,8 +301,8 @@ async def scrape_shortcut_command(update: Update, context: ContextTypes.DEFAULT_
     urls = context.user_data.get("scrape_urls", {})
     if idx in urls:
         url = urls[idx]
-        await update.message.reply_text(f"⚡ *Memproses Artikel {idx}...*\n_{url}_\nSila tunggu...", parse_mode="Markdown", disable_web_page_preview=True)
-        await handle_message(update, context, override_text=f"Scrape {url}")
+        await update.message.reply_text(f"⚡ *Memproses Artikel {idx}...*\n_{url}_", parse_mode="Markdown", disable_web_page_preview=True)
+        await _execute_direct_scrape_pipeline(url, update.effective_user.id, update.effective_chat.id, context, update)
     else:
         await update.message.reply_text("⚠️ URL tidak dijumpai dalam memori sesi. Sila minta senarai berita baru.")
 
@@ -678,18 +775,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             await confirm_command(update, context)
             return
 
-        if "http://" not in msg_clean and "https://" not in msg_clean and not msg_clean.startswith("scrape"):
-            if any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
-                await send_gnews_trending(update, context, category="trending", max_items=6)
+        if "http://" in msg_clean or "https://" in msg_clean or msg_clean.startswith("scrape"):
+            url_match = re.search(r"https?://\S+", user_message)
+            if url_match:
+                target_url = url_match.group(0)
+                await _execute_direct_scrape_pipeline(target_url, user_id, chat_id, context, update)
                 return
-        else:
-            if "[DRAFT_TITLE" not in user_message:
-                agent_message += (
-                    "\n\n(ARAHAN PIPELINE UTAMA: Sila panggil ScraperSubAgent untuk mengekstrak tajuk, teks penuh, dan URL imej utama artikel dari pautan ini, "
-                    "kemudian panggil SocialContentSubAgent untuk menjana Master Article Sakluma lengkap bersama tajuk dan hashtags. "
-                    "Di bahagian AKHIR jawapan anda, anda MESTI menyertakan tag metadata berikut secara TEPAT: "
-                    "[DRAFT_TITLE: Tajuk Utama], [DRAFT_SOURCE_URL: URL], [DRAFT_IMAGE: URL Imej Utama], [DRAFT_HASHTAGS: Hashtags], [DRAFT_MASTER_ARTICLE: Teks Master Article].)"
-                )
+        elif any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
+            await send_gnews_trending(update, context, category="trending", max_items=6)
+            return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     conv_id = _get_conv_id_for_user(user_id)
