@@ -45,10 +45,9 @@ def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
             ("berita", "FB: Berita 📰"),
             ("pemerhati", "FB: Pemerhati 👀"),
             ("kedai_kopi", "FB: Kedai Kopi ☕"),
-            ("viral_santai", "FB: Viral Santai 🔥"),
-            ("makcik_bawang", "FB: Makcik Bawang 😆"),
-            ("kisah_inspirasi", "FB: Kisah Inspirasi ❤️"),
-            ("borak_kawan", "FB: Borak Kawan 🫱🏻🫲🏻")
+            ("viral_santai", "FB: Viral Santai 🍿"),
+            ("makcik_bawang", "FB: Makcik Bawang 🗣️"),
+            ("kisah_inspirasi", "FB: Kisah Inspirasi ✨")
         ]
 
         row = []

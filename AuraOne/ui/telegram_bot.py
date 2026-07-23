@@ -494,8 +494,18 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0) -> str:
     global current_key_idx
-    style_info = f" (Gaya: {fb_style})" if fb_style else ""
-    len_info = f" (Jumlah bebenang: {thread_length})" if thread_length > 0 else ""
+    fb_style_descriptions = {
+        "berita": "gaya Berita 📰 (rasmi, berstruktur, fakta, bernas)",
+        "pemerhati": "gaya Pemerhati 👀 (analitikal, tajam, perspektif mendalam)",
+        "kedai_kopi": "gaya Kedai Kopi ☕ (santai, rojak Malaysia, sembang mesra)",
+        "viral_santai": "gaya Viral Santai 🍿 (panas, kelakar, santai, dramatik)",
+        "makcik_bawang": "gaya Makcik Bawang 🗣️ (gossip mesra, sok-sek, terkejut, bercerita)",
+        "kisah_inspirasi": "gaya Kisah Inspirasi ✨ (emosi, inspirasi, pengajaran hidup, positif)"
+    }
+    style_desc = fb_style_descriptions.get(fb_style, f"gaya {fb_style}") if fb_style else ""
+    style_info = f" dalam {style_desc}" if style_desc else ""
+    len_info = f" (format bebenang {thread_length} hantaran)" if thread_length > 0 else ""
+
     prompt = (
         f"Anda adalah Editor Konten Sakluma profesional. Tulis draf hantaran media sosial yang humanized dan menarik untuk platform {plat.upper()}{style_info}{len_info}.\n\n"
         f"TAJUK: {draft['title']}\n"
@@ -715,9 +725,22 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             draft_repo.update_draft_state(user_id, json.dumps(state_data))
             reply_markup = _get_sub_options_keyboard(state_data)
             await query.message.reply_text("Pilih pilihan sub-platform boss:", reply_markup=reply_markup)
-        else:
-            await query.message.reply_text("⏳ Menjana semua draf platform terpilih...")
-            await _generate_all_platform_drafts(user_id, chat_id, selected, {}, draft, context, query.message)
+    elif data.startswith("sub:"):
+        parts = data.split(":")
+        if len(parts) == 3:
+            key, val = parts[1], parts[2]
+            options = state_data.get("options", {})
+            if key == "thread_len":
+                options["thread_len"] = int(val) if val.isdigit() else 5
+            else:
+                options[key] = val
+            state_data["options"] = options
+            draft_repo.update_draft_state(user_id, json.dumps(state_data))
+            reply_markup = _get_sub_options_keyboard(state_data)
+            try:
+                await query.edit_message_reply_markup(reply_markup=reply_markup)
+            except Exception:
+                pass
 
     elif data == "sub_next":
         selected = state_data.get("selected", [])
