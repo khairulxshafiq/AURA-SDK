@@ -31,7 +31,7 @@ def get_location_agent_config(conv_id: str | None = None):
     kwargs = dict(
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
-        capabilities=types.CapabilitiesConfig(enable_subagents=False),
+        capabilities=types.CapabilitiesConfig(enable_subagents=False, disabled_tools=["start_subagent"]),
         tools=[reverse_geocode_location, _get_weather_forecast, _get_extended_weather_forecast],
         policies=[policy.allow_all()],
         system_instructions=LOCATION_SYSTEM_INSTRUCTIONS,

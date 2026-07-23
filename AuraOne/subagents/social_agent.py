@@ -40,7 +40,7 @@ def get_social_agent_config(conv_id: str | None = None):
     kwargs = dict(
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
-        capabilities=types.CapabilitiesConfig(enable_subagents=False),
+        capabilities=types.CapabilitiesConfig(enable_subagents=False, disabled_tools=["start_subagent"]),
         tools=[],  # Zero tools to prevent tool hallucination
         policies=[policy.allow_all()],
         system_instructions=SOCIAL_SYSTEM_INSTRUCTIONS,
