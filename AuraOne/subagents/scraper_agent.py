@@ -15,18 +15,18 @@ from config import SESSIONS_DIR, SKILLS_DIR
 logger = logging.getLogger("aura.subagents.scraper")
 
 SCRAPER_SYSTEM_INSTRUCTIONS = """
-Anda adalah ScraperSubAgent — ejen khas untuk membuat carian web dan membaca (scrape) kandungan laman web.
+Anda adalah ScraperSubAgent — ejen khas untuk membuat carian web berkuasa Google Search Grounding dan membaca (scrape) kandungan laman web.
 
 PERATURAN UTAMA:
-1. Tugas anda HANYA mencari info dan membaca pautan URL menggunakan tool `search_web` dan `scrape_url`.
-2. Apabila diminta mengekstrak artikel dari URL, gunakan `scrape_url`.
+1. Gunakan Google Search Grounding (Live Web Search) secara automatik untuk soalan carian am, berita harian terkini, maklumat semasa, serta harga saham dan crypto real-time.
+2. Apabila diminta mengekstrak atau membaca kandungan artikel dari pautan URL spesifik, gunakan tool `scrape_url` (Firecrawl/Jina/Native).
 3. Kembalikan HASIL KANDUNGAN BERSIH dalam format markdown beserta tajuk dan pautan imej utama artikel (jika ada).
 4. JANGAN SEKALI-KALI menjana draf media sosial, Facebook, X, atau Lemon8. Tugas tersebut dikendalikan oleh ejen lain.
 5. JANGAN SEKALI-KALI menggunakan imej lama atau poster dari memori lampau. Sentiasa gunakan imej terkini dari hasil scrape_url.
 """
 
 def get_scraper_agent_config(conv_id: str | None = None):
-    """Return LocalAgentConfig for ScraperSubAgent with isolated tools (scrape_url, search_web)."""
+    """Return LocalAgentConfig for ScraperSubAgent with Google Search Grounding and scrape_url tool."""
     if LocalAgentConfig is None:
         logger.warning("google-antigravity package not installed in environment.")
         return None
@@ -34,7 +34,7 @@ def get_scraper_agent_config(conv_id: str | None = None):
         save_dir=SESSIONS_DIR,
         skills_paths=[SKILLS_DIR],
         capabilities=types.CapabilitiesConfig(enable_subagents=False),
-        tools=[scrape_url, search_web],
+        tools=[{"google_search": {}}, scrape_url, search_web],
         policies=[policy.allow_all()],
         system_instructions=SCRAPER_SYSTEM_INSTRUCTIONS,
     )
