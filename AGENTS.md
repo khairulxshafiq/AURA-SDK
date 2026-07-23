@@ -32,6 +32,19 @@ Refer to `README.md` for high-level system architecture and systemd services.
 3. **Merging:** Verify code functionality locally/isolated before submitting a PR or merging to `main`.
 4. **Clean Commits:** Provide detailed commit messages so revisions can easily be reverted (e.g., restoring state from 5 days ago).
 
+## 🔁 Pull Request Policy for LLMs / Agents / LUMA
+
+Any change made by an LLM, agent, or automation tool in this repository must follow this workflow:
+
+1. **Create or switch to a dedicated branch first** before editing files.
+2. **Do not commit directly to `main`.**
+3. **Do not merge directly to `main`.** If a change is ready, create a Pull Request and wait for review/approval.
+4. **If the agent is asked to merge**, it must first open or update a PR, then stop unless explicit approval is given.
+5. **If branch creation is not possible, the agent must stop and ask for human confirmation instead of forcing a direct push/merge.**
+6. **Every PR should include a short summary of what changed, why it changed, and any validation performed.**
+
+This rule applies to all automation workflows, including LUMA, Copilot, Cline, or any other agent that touches the repository.
+
 ---
 
 ## 🛑 Code Modification Guardrails
