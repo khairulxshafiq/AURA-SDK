@@ -397,7 +397,14 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0) -> str:
     global current_key_idx
-    prompt = f"Anda adalah Editor Konten Sakluma. Tulis draf untuk {plat.upper()}.\n\nARTIKEL: {draft['title']}\n{draft['master_article']}"
+    style_info = f" (Gaya: {fb_style})" if fb_style else ""
+    len_info = f" (Jumlah bebenang: {thread_length})" if thread_length > 0 else ""
+    prompt = (
+        f"Anda adalah Editor Konten Sakluma profesional. Tulis draf hantaran media sosial yang humanized dan menarik untuk platform {plat.upper()}{style_info}{len_info}.\n\n"
+        f"TAJUK: {draft['title']}\n"
+        f"HASHTAGS: {draft.get('hashtags', '')}\n"
+        f"MASTER ARTIKEL:\n{draft['master_article']}"
+    )
 
     num_keys = len(GEMINI_KEYS)
     for attempt in range(num_keys):
@@ -411,12 +418,38 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
             from google import genai
             client = genai.Client(api_key=active_key)
             response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-            return response.text
+            if response and response.text:
+                return response.text
         except Exception as err:
-            if "429" in str(err):
+            logger.warning(f"Gemini key #{current_key_idx + 1} draft gen failed ({err})")
+            if "429" in str(err) or "quota" in str(err).lower():
                 memory.set_key_cooldown(active_key, 600.0)
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
+
+    # OpenRouter Fallback
+    if OPENROUTER_API_KEY:
+        try:
+            logger.info(f"Generating draft for {plat.upper()} using OpenRouter fallback ({OPENROUTER_FALLBACK_MODEL})...")
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": OPENROUTER_FALLBACK_MODEL,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    content = data["choices"][0]["message"]["content"]
+                    return content
+                else:
+                    logger.error(f"OpenRouter draft gen error ({r.status_code}): {r.text[:200]}")
+        except Exception as or_err:
+            logger.error(f"OpenRouter draft gen exception: {or_err}")
+
     return ""
 
 async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
@@ -638,6 +671,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
     if not user_message and not update.message.photo:
         return
 
+    agent_message = user_message
     if user_message:
         msg_clean = user_message.strip().lower()
         if msg_clean.startswith("confirm") or msg_clean.startswith("/confirm"):
@@ -648,6 +682,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             if any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
                 await send_gnews_trending(update, context, category="trending", max_items=6)
                 return
+        else:
+            if "[DRAFT_TITLE" not in user_message:
+                agent_message += (
+                    "\n\n(ARAHAN PIPELINE UTAMA: Sila panggil ScraperSubAgent untuk mengekstrak tajuk, teks penuh, dan URL imej utama artikel dari pautan ini, "
+                    "kemudian panggil SocialContentSubAgent untuk menjana Master Article Sakluma lengkap bersama tajuk dan hashtags. "
+                    "Di bahagian AKHIR jawapan anda, anda MESTI menyertakan tag metadata berikut secara TEPAT: "
+                    "[DRAFT_TITLE: Tajuk Utama], [DRAFT_SOURCE_URL: URL], [DRAFT_IMAGE: URL Imej Utama], [DRAFT_HASHTAGS: Hashtags], [DRAFT_MASTER_ARTICLE: Teks Master Article].)"
+                )
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
     conv_id = _get_conv_id_for_user(user_id)
@@ -667,7 +709,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             if config is None:
                 break
             async with Agent(config) as agent:
-                response = await asyncio.wait_for(agent.chat(user_message), timeout=12.0)
+                response = await asyncio.wait_for(agent.chat(agent_message), timeout=12.0)
                 response_text = await response.text()
                 if not conv_id and agent.conversation_id:
                     _register_conv_id_for_user(user_id, agent.conversation_id)
@@ -700,7 +742,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
         or_config = get_supervisor_openrouter_config(conv_id)
         if or_config is not None:
             async with Agent(or_config) as agent:
-                response = await asyncio.wait_for(agent.chat(user_message), timeout=45.0)
+                response = await asyncio.wait_for(agent.chat(agent_message), timeout=45.0)
                 response_text = await response.text()
                 if not conv_id and agent.conversation_id:
                     _register_conv_id_for_user(user_id, agent.conversation_id)
