@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-23)
+* **Telegram Bot Freeze & OpenRouter Fallback Fix**: Diagnostic identified that Go harness 429 backoff retry loops were causing `Agent(config).chat()` calls to hang for ~1 minute per rate-limited Gemini key. Fixed by adding a 12-second `asyncio.wait_for` timeout around Gemini calls, an asynchronous background key auditor `_audit_gemini_keys_async` to instantly seed 429 cooldowns on startup, 20s SQLite lock timeout in `storage/db.py`, and instant seamless failover to OpenRouter Fallback Proxy `[P1]`.
 * **Google Search Grounding Activated on ScraperSubAgent**: Updated `subagents/scraper_agent.py` to enable Google Search Grounding (`tools=[{"google_search": {}}, scrape_url, search_web]`) on agent initialization. Updated `SCRAPER_SYSTEM_INSTRUCTIONS` to leverage Google Search Grounding for general web searches, daily news, and real-time stock/crypto prices, while retaining `scrape_url` (Firecrawl/Jina/Native) for specific URL parsing.
 * **Phase 1 Refactoring Complete**: Berjaya mengasingkan codebase monolitik kepada `config.py`, `storage/` (Repository Pattern untuk SQLite: db, memory, location, draft), dan `tools/` (Atomic Tools: web_scraper, search_engine, location_service, apify_service, publisher_service) dengan 100% façade backward compatibility pada `memory.py` dan `tools.py`.
 * **Google Drive Storage & Folder Split Migration**: Hentikan sepenuhnya GitHub CDN hosting/dump commit automatik. Berjaya migrasi muat naik ke Google Drive API menggunakan 2 folder khas:

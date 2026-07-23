@@ -6,9 +6,9 @@ from config import DB_PATH
 logger = logging.getLogger("aura.storage.db")
 
 def get_db_connection() -> sqlite3.Connection:
-    """Create and return a connection to the SQLite database."""
+    """Create and return a connection to the SQLite database with 20s lock timeout."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=20.0)
     return conn
 
 def init_db() -> None:

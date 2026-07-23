@@ -3,6 +3,7 @@ import re
 import json
 import logging
 import datetime
+import asyncio
 import httpx
 from typing import Optional
 
@@ -666,7 +667,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             if config is None:
                 break
             async with Agent(config) as agent:
-                response = await agent.chat(user_message)
+                response = await asyncio.wait_for(agent.chat(user_message), timeout=12.0)
                 response_text = await response.text()
                 if not conv_id and agent.conversation_id:
                     _register_conv_id_for_user(user_id, agent.conversation_id)
@@ -677,9 +678,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             clean = _clean_response(response_text)
             await _send_telegram_msg(update, clean, parse_mode="Markdown")
             return
+        except asyncio.TimeoutError:
+            logger.warning(f"Gemini key #{current_key_idx + 1} timed out after 12s (429 backoff retry loop), placing on 10-min cooldown...")
+            memory.set_key_cooldown(active_key, 600.0)
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
         except Exception as err:
             logger.warning(f"Gemini key #{current_key_idx + 1} failed ({err}), trying next key...")
-            if "429" in str(err) or "quota" in str(err).lower():
+            if "429" in str(err) or "quota" in str(err).lower() or "resource_exhausted" in str(err).lower():
                 memory.set_key_cooldown(active_key, 600.0)
             current_key_idx = (current_key_idx + 1) % num_keys
             continue
@@ -688,12 +694,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
     try:
         logger.info(f"All Gemini keys in cooldown/failed. Falling back to OpenRouter ({OPENROUTER_FALLBACK_MODEL}) for user {user_id}...")
         os.environ["GEMINI_API_KEY"] = ""
+        os.environ["OPENAI_API_KEY"] = OPENROUTER_API_KEY or "sk-or-v1-dummy"
         from orchestrator.supervisor import get_supervisor_openrouter_config
         from google.antigravity import Agent
         or_config = get_supervisor_openrouter_config(conv_id)
         if or_config is not None:
             async with Agent(or_config) as agent:
-                response = await agent.chat(user_message)
+                response = await asyncio.wait_for(agent.chat(user_message), timeout=45.0)
                 response_text = await response.text()
                 if not conv_id and agent.conversation_id:
                     _register_conv_id_for_user(user_id, agent.conversation_id)
@@ -712,8 +719,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
 
 # ─── Handler Registration ─────────────────────────────────────────────────────
 
+def _audit_gemini_keys_async():
+    """Non-blocking background check of Gemini API keys to seed 429 cooldown state."""
+    def _check():
+        for key in GEMINI_KEYS:
+            if not memory.is_key_on_cooldown(key):
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
+                    r = httpx.post(url, json={"contents": [{"parts": [{"text": "ping"}]}]}, timeout=5)
+                    if r.status_code == 429:
+                        logger.info(f"[KeyAuditor] Gemini key {key[:8]}... returned 429, setting 10-min cooldown.")
+                        memory.set_key_cooldown(key, 600.0)
+                except Exception as e:
+                    logger.warning(f"[KeyAuditor] Key audit ping error for {key[:8]}...: {e}")
+    threading.Thread(target=_check, daemon=True).start()
+
 def register_telegram_handlers(application: Application):
     """Register all Telegram bot command, callback, location, and message handlers."""
+    _audit_gemini_keys_async()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(CommandHandler("confirm", confirm_command))
