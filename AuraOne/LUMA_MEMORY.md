@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-24)
+* **Airtable Direct Image Attachment Integration Implemented**: Fixed Airtable attachment ingestion failure caused by Google Drive URLs. Updated `tools/publisher_service.py` to bypass Google Drive URLs in `save_draft_to_airtable()`'s `Image file` attachment payload. Configured `_prepare_drive_image_for_airtable()` to extract direct public web image URLs (`.jpg`/`.png`/`.webp`) or Telegram Direct File Links (`https://api.telegram.org/file/bot...`) while performing Google Drive backup uploads in the background. Guaranteed physical `.jpg` image attachment ingestion in Airtable Content Station.
 * **Generate Drafts Async Execution & Timeout Fix**: Resolved issue where `Generate Drafts ⚡` callback got stuck on `"⌛ Menjana semua draf platform terpilih..."`. Refactored `_call_draft_generator_model` in `ui/telegram_bot.py` to run Gemini API calls inside `asyncio.to_thread` with strict 10s `asyncio.wait_for` timeout protection, instant fallback to OpenRouter, and clean fallback draft generation if models time out. Ensured `confirm_platform` callback handler displays detailed Google Drive upload & Airtable record confirmation messages.
 * **Content Pipeline State Machine Fully Restored**: Restored 4-step Telegram Callback State Machine:
   1. **STEP 1 (Scrape & Master Draft)**: Direct 3-Tier `scrape_url` -> Master Draft generation + image caching -> SQLite persistence -> Photo Preview + Platform Toggle Keyboards.
