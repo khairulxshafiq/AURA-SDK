@@ -496,6 +496,29 @@ async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
     thread_id = getattr(update.message, "message_thread_id", None) if update.message else None
     await update.message.reply_text(escaped, parse_mode="HTML", reply_markup=reply_markup, message_thread_id=thread_id)
 
+def _clean_platform_draft_output(text: str) -> str:
+    """Post-process and clean platform draft text output to guarantee 100% pure caption content."""
+    if not text:
+        return ""
+
+    # 1. Remove visual/GIF recommendations
+    cleaned = re.sub(r"\[?(?:Gambar|Media|Visual|Cadangan GIF|GIF):\s*.*?\]?", "", text, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\((?:Gambar|Media|Visual|Cadangan GIF|GIF):\s*.*?\)", "", cleaned, flags=re.IGNORECASE)
+
+    # 2. Remove structural header labels & conversational intro lines line-by-line
+    lines = []
+    for line in cleaned.split("\n"):
+        line_strip = line.strip()
+        # Skip intro conversational fluff lines
+        if re.match(r"^(?:Baiklah|Tentu|Berikut|Ini|Semoga|Cadangan|Kapsyen)\b.*", line_strip, re.IGNORECASE) and len(line_strip) < 70 and ("draf" in line_strip.lower() or "hantaran" in line_strip.lower() or "berikut" in line_strip.lower() or "sakluma" in line_strip.lower()):
+            continue
+        # Strip structural prefixes
+        line_clean = re.sub(r"^(?:FACEBOOK POST|FB POST|THREADS POST|X POST|TWITTER POST|LEMON8 POST|KAPSYEN|TAJUK|TITLE|POST):\s*", "", line, flags=re.IGNORECASE)
+        lines.append(line_clean)
+
+    cleaned_text = "\n".join(lines).strip()
+    return cleaned_text
+
 # ─── Draft Generation & Confirmation Helpers ─────────────────────────────────
 
 async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0) -> str:
@@ -513,8 +536,13 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
     len_info = f" (format bebenang {thread_length} hantaran)" if thread_length > 0 else ""
 
     prompt = (
-        f"Anda adalah Editor Konten Sakluma profesional. Tulis draf hantaran media sosial yang humanized dan menarik untuk platform {plat.upper()}{style_info}{len_info}.\n\n"
-        f"TAJUK: {draft['title']}\n"
+        f"Anda adalah Editor Konten Sakluma profesional. Tulis draf hantaran media sosial untuk platform {plat.upper()}{style_info}{len_info}.\n\n"
+        f"SYARAT PENULISAN (STRICT CLEAN OUTPUT):\n"
+        f"1. DILARANG SAMA SEKALI memasukkan ayat muqaddimah sembang (contoh: 'Baiklah...', 'Tentu, berikut draf...').\n"
+        f"2. DILARANG SAMA SEKALI memasukkan cadangan visual/GIF (contoh: 'Gambar: Gabungan GIF...', 'Media: Gambar...').\n"
+        f"3. DILARANG SAMA SEKALI meletakkan label struktur (contoh: 'FACEBOOK POST:', 'Kapsyen:', 'Tajuk:').\n"
+        f"4. MESTI 100% TEKS KAPSYEN BERSIH SAHAJA (Tajuk + Isi Kapsyen + Hashtag) yang sedia dipos terus ke media sosial.\n\n"
+        f"TAJUK ASAL: {draft['title']}\n"
         f"HASHTAGS: {draft.get('hashtags', '')}\n"
         f"MASTER ARTIKEL:\n{draft['master_article']}"
     )
@@ -536,7 +564,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
         try:
             text = await asyncio.wait_for(asyncio.to_thread(_sync_gemini_call, active_key), timeout=10.0)
             if text:
-                return text
+                return _clean_platform_draft_output(text)
         except asyncio.TimeoutError:
             logger.warning(f"Gemini key #{current_key_idx + 1} draft gen timed out after 10s, placing on cooldown...")
             memory.set_key_cooldown(active_key, 600.0)
@@ -566,7 +594,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 if r.status_code == 200:
                     data = r.json()
                     content = data["choices"][0]["message"]["content"]
-                    return content
+                    return _clean_platform_draft_output(content)
                 else:
                     logger.error(f"OpenRouter draft gen error ({r.status_code}): {r.text[:200]}")
         except Exception as or_err:
@@ -574,7 +602,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
 
     # Fallback to master article text if all model calls fail/timeout
     style_label = f" ({fb_style})" if fb_style else ""
-    return f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+    return _clean_platform_draft_output(f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}")
 
 async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
     generated_drafts = {}
@@ -590,7 +618,8 @@ async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_pla
         
         if not draft_text:
             draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
-            
+
+        draft_text = _clean_platform_draft_output(draft_text)
         generated_drafts[plat] = draft_text
 
     draft_repo.update_platform_draft(user_id, ",".join(selected_platforms), json.dumps(generated_drafts), state="")
