@@ -1,8 +1,13 @@
 # LUMA Memory & Progress Tracking
 
-## 📅 Last Updated: 2026-07-23
+## 📅 Last Updated: 2026-07-25
 
 ---
+
+## 🚀 Recent Architecture Audit & Fixes (2026-07-25)
+* **Unified Single Persona System Instructions**: Resolved discrepancy where `orchestrator/supervisor.py` loaded a 48-line stub (`orchestrator/persona.txt`), causing CLI / LUMA VPS agent to miss full content automation rules. Pointed `supervisor.py` to `AuraOne/persona.txt` (single source of truth) and removed the stub.
+* **Subagent & Engine Persona Alignment**: Updated `subagents/social_agent.py` to natively reference all 6 Facebook narrative lenses (`fb_berita`, `fb_pemerhati`, `fb_kedai_kopi`, `fb_viral_santai`, `fb_makcik_bawang`, `fb_kisah_inspirasi`) and Threads/X bebenang options (3, 5, 8 posts).
+* **Consolidated Memory Tracking Files**: Synchronized root `LUMA_MEMORY.md` with `AuraOne/LUMA_MEMORY.md`.
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-24)
 * **Telegram Instant Chat Response & Zero Delay Implemented**: Resolved issue where Telegram chat replies took up to 2.5 minutes due to heavy SDK `Agent(config)` WebSocket context manager teardown over large session trajectory files. Created `_call_supervisor_chat_model()` in `ui/telegram_bot.py` with direct `genai.Client` execution and OpenRouter fallback (6s timeout). Reduced Telegram response latency from 150 seconds down to **1.5 seconds**, guaranteeing instant Telegram replies.

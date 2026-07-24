@@ -11,11 +11,11 @@ except ImportError:
     types = None
     policy = None
 
-from config import SESSIONS_DIR, SKILLS_DIR, BASE_DIR, OPENROUTER_FALLBACK_MODEL, OPENROUTER_BASE_URL
+from config import SESSIONS_DIR, SKILLS_DIR, BASE_DIR, PERSONA_PATH, OPENROUTER_FALLBACK_MODEL, OPENROUTER_BASE_URL
 
 logger = logging.getLogger("aura.orchestrator.supervisor")
 
-SUPERVISOR_PERSONA_PATH = os.path.join(BASE_DIR, "orchestrator", "persona.txt")
+SUPERVISOR_PERSONA_PATH = PERSONA_PATH
 
 def get_supervisor_instructions() -> str:
     """Load Supervisor persona instructions and inject current datetime and memory summary."""
