@@ -523,12 +523,23 @@ def _clean_platform_draft_output(text: str) -> str:
 
 async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0) -> str:
     global current_key_idx
-    if plat.lower() in ["facebook", "fb"] or fb_style:
+    plat_lower = plat.lower()
+    if plat_lower in ["facebook", "fb"] or (fb_style and plat_lower not in ["threads", "x", "twitter"]):
         from orchestrator.fb_personas import build_fb_prompt
         style_key = f"fb_{fb_style}" if fb_style and not fb_style.startswith("fb_") else (fb_style or "fb_viral_santai")
         fb_p = build_fb_prompt(style_key, draft.get("master_article", ""))
-        system_instruction = fb_p["system"]
-        prompt = f"{system_instruction}\n\n{fb_p['user']}"
+        prompt = f"{fb_p['system']}\n\n{fb_p['user']}"
+    elif plat_lower == "threads":
+        from orchestrator.threads_x_personas import build_threads_prompt
+        count_key = str(thread_length) if thread_length in [3, 5, 8] else "5"
+        style_key = fb_style or "catchy"
+        tp = build_threads_prompt(count_key, style_key, draft.get("master_article", ""))
+        prompt = f"{tp['system']}\n\n{tp['user']}"
+    elif plat_lower in ["x", "twitter"]:
+        from orchestrator.threads_x_personas import build_x_prompt
+        style_key = fb_style or "catchy"
+        xp = build_x_prompt(style_key, draft.get("master_article", ""))
+        prompt = f"{xp['system']}\n\n{xp['user']}"
     else:
         style_desc = f" gaya {fb_style}" if fb_style else ""
         len_info = f" (format bebenang {thread_length} hantaran)" if thread_length > 0 else ""
