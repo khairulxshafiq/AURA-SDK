@@ -176,25 +176,18 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             daemon=True
         ).start()
 
-        clean_text = response_text
-        clean_text = re.sub(r"\[DRAFT_IMAGE:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\[DRAFT_TITLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\[DRAFT_SOURCE_URL:\s*https?://[^\s\]]+\]", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\[DRAFT_MASTER_ARTICLE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_HASHTAGS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_CONTENT_TYPE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\[DRAFT_ORIGINAL_PRICE:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\[DRAFT_SELLER_LOCATION:\s*.+?\]", "", clean_text, flags=re.IGNORECASE)
-        clean_text = re.sub(r"\[DRAFT_FB:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_THREADS:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_TWITTER:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
-        clean_text = re.sub(r"\[DRAFT_LEMON8:\s*.+?\]", "", clean_text, flags=re.IGNORECASE | re.DOTALL)
+        formatted_display = (
+            f"📰 *MASTER ARTICLE (DRAFT GENERAL SAKLUMA)*\n\n"
+            f"*{title}*\n\n"
+            f"{master_article}\n\n"
+            f"{hashtags or '#saklumanews #saklumaprihatin'}\n\n"
+            f"👇 *Sila pilih platform & gaya penulisan di bawah untuk diolah:*"
+        )
 
-        clean_text = clean_text.strip()
         reply_markup = _get_platform_keyboard(state_dict)
 
         await update.message.reply_text(
-            clean_text,
+            formatted_display,
             parse_mode="Markdown",
             reply_markup=reply_markup
         )
