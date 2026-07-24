@@ -848,6 +848,75 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await query.message.reply_text(f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
 
+async def _call_supervisor_chat_model(agent_message: str) -> str:
+    """Direct fast execution for conversational chat with strict 6s timeout and OpenRouter fallback."""
+    global current_key_idx
+    from orchestrator.supervisor import get_supervisor_instructions
+    system_instructions = get_supervisor_instructions()
+
+    prompt = f"{system_instructions}\n\nMESEJ PENGGUNA:\n{agent_message}"
+
+    def _sync_gemini_chat(api_key: str) -> str:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt
+        )
+        return response.text if response and response.text else ""
+
+    num_keys = len(GEMINI_KEYS)
+    for attempt in range(num_keys):
+        active_key = GEMINI_KEYS[current_key_idx]
+        if memory.is_key_on_cooldown(active_key):
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
+
+        os.environ["GEMINI_API_KEY"] = active_key
+        try:
+            text = await asyncio.wait_for(asyncio.to_thread(_sync_gemini_chat, active_key), timeout=6.0)
+            if text:
+                return text
+        except asyncio.TimeoutError:
+            logger.warning(f"Gemini key #{current_key_idx + 1} chat timed out after 6s, placing on 10-min cooldown...")
+            memory.set_key_cooldown(active_key, 600.0)
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
+        except Exception as err:
+            logger.warning(f"Gemini key #{current_key_idx + 1} chat failed ({err})")
+            if "429" in str(err) or "quota" in str(err).lower():
+                memory.set_key_cooldown(active_key, 600.0)
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
+
+    # OpenRouter Proxy Fallback
+    if OPENROUTER_API_KEY:
+        try:
+            logger.info(f"All Gemini keys in cooldown/failed. Using OpenRouter fallback ({OPENROUTER_FALLBACK_MODEL}) for chat...")
+            headers = {
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            payload = {
+                "model": OPENROUTER_FALLBACK_MODEL,
+                "messages": [
+                    {"role": "system", "content": system_instructions},
+                    {"role": "user", "content": agent_message}
+                ]
+            }
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
+                if r.status_code == 200:
+                    data = r.json()
+                    content = data["choices"][0]["message"]["content"]
+                    return content
+                else:
+                    logger.error(f"OpenRouter chat error ({r.status_code}): {r.text[:200]}")
+        except Exception as or_err:
+            logger.error(f"OpenRouter chat exception: {or_err}")
+
+    return "Ya, AURA di sini! Ada apa-apa yang saya boleh bantu hari ini? ⚡"
+
 # ─── Message Handler Router ───────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, override_text: str = None):
@@ -878,67 +947,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    conv_id = _get_conv_id_for_user(user_id)
-
-    num_keys = len(GEMINI_KEYS)
-    for attempt in range(num_keys):
-        active_key = GEMINI_KEYS[current_key_idx]
-        if memory.is_key_on_cooldown(active_key):
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-
-        os.environ["GEMINI_API_KEY"] = active_key
-        try:
-            from orchestrator.supervisor import get_supervisor_gemini_config
-            from google.antigravity import Agent
-            config = get_supervisor_gemini_config(conv_id)
-            if config is None:
-                break
-            async with Agent(config) as agent:
-                response = await asyncio.wait_for(agent.chat(agent_message), timeout=12.0)
-                response_text = await response.text()
-                if not conv_id and agent.conversation_id:
-                    _register_conv_id_for_user(user_id, agent.conversation_id)
-
-            # General Chat Intent: Reply conversationally without invoking draft pipeline or attaching keyboards
-            clean = _clean_response(response_text)
-            await _send_telegram_msg(update, clean, parse_mode="Markdown")
-            return
-        except asyncio.TimeoutError:
-            logger.warning(f"Gemini key #{current_key_idx + 1} timed out after 12s (429 backoff retry loop), placing on 10-min cooldown...")
-            memory.set_key_cooldown(active_key, 600.0)
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-        except Exception as err:
-            logger.warning(f"Gemini key #{current_key_idx + 1} failed ({err}), trying next key...")
-            if "429" in str(err) or "quota" in str(err).lower() or "resource_exhausted" in str(err).lower():
-                memory.set_key_cooldown(active_key, 600.0)
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-
-    # ─── OpenRouter Proxy Fallback ──────────────────────────────────────────────
-    try:
-        logger.info(f"All Gemini keys in cooldown/failed. Falling back to OpenRouter ({OPENROUTER_FALLBACK_MODEL}) for user {user_id}...")
-        os.environ["GEMINI_API_KEY"] = ""
-        os.environ["OPENAI_API_KEY"] = OPENROUTER_API_KEY or "sk-or-v1-dummy"
-        from orchestrator.supervisor import get_supervisor_openrouter_config
-        from google.antigravity import Agent
-        or_config = get_supervisor_openrouter_config(conv_id)
-        if or_config is not None:
-            async with Agent(or_config) as agent:
-                response = await asyncio.wait_for(agent.chat(agent_message), timeout=45.0)
-                response_text = await response.text()
-                if not conv_id and agent.conversation_id:
-                    _register_conv_id_for_user(user_id, agent.conversation_id)
-
-            clean = _clean_response(response_text)
-            final_text = f"[P1] {OPENROUTER_FALLBACK_MODEL}\n\n{clean}" if not is_debug else f"🔧 *[DEBUG: OpenRouter]*\n\n{clean}"
-            await _send_telegram_msg(update, final_text, parse_mode="Markdown")
-            return
-    except Exception as or_err:
-        logger.error(f"[OpenRouter Fallback Error] {or_err}", exc_info=True)
-
-    await update.message.reply_text("⚠️ Semua Gemini API Key & OpenRouter Fallback sedang bercuti/cooldown. Sila cuba sebentar lagi!")
+    response_text = await _call_supervisor_chat_model(agent_message)
+    clean = _clean_response(response_text)
+    if clean:
+        await _send_telegram_msg(update, clean, parse_mode="Markdown")
 
 # ─── Handler Registration ─────────────────────────────────────────────────────
 
