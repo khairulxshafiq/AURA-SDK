@@ -523,29 +523,25 @@ def _clean_platform_draft_output(text: str) -> str:
 
 async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0) -> str:
     global current_key_idx
-    fb_style_descriptions = {
-        "berita": "gaya Berita 📰 (rasmi, berstruktur, fakta, bernas)",
-        "pemerhati": "gaya Pemerhati 👀 (analitikal, tajam, perspektif mendalam)",
-        "kedai_kopi": "gaya Kedai Kopi ☕ (santai, rojak Malaysia, sembang mesra)",
-        "viral_santai": "gaya Viral Santai 🍿 (panas, kelakar, santai, dramatik)",
-        "makcik_bawang": "gaya Makcik Bawang 🗣️ (gossip mesra, sok-sek, terkejut, bercerita)",
-        "kisah_inspirasi": "gaya Kisah Inspirasi ✨ (emosi, inspirasi, pengajaran hidup, positif)"
-    }
-    style_desc = fb_style_descriptions.get(fb_style, f"gaya {fb_style}") if fb_style else ""
-    style_info = f" dalam {style_desc}" if style_desc else ""
-    len_info = f" (format bebenang {thread_length} hantaran)" if thread_length > 0 else ""
-
-    prompt = (
-        f"Anda adalah Editor Konten Sakluma profesional. Tulis draf hantaran media sosial untuk platform {plat.upper()}{style_info}{len_info}.\n\n"
-        f"SYARAT PENULISAN (STRICT CLEAN OUTPUT):\n"
-        f"1. DILARANG SAMA SEKALI memasukkan ayat muqaddimah sembang (contoh: 'Baiklah...', 'Tentu, berikut draf...').\n"
-        f"2. DILARANG SAMA SEKALI memasukkan cadangan visual/GIF (contoh: 'Gambar: Gabungan GIF...', 'Media: Gambar...').\n"
-        f"3. DILARANG SAMA SEKALI meletakkan label struktur (contoh: 'FACEBOOK POST:', 'Kapsyen:', 'Tajuk:').\n"
-        f"4. MESTI 100% TEKS KAPSYEN BERSIH SAHAJA (Tajuk + Isi Kapsyen + Hashtag) yang sedia dipos terus ke media sosial.\n\n"
-        f"TAJUK ASAL: {draft['title']}\n"
-        f"HASHTAGS: {draft.get('hashtags', '')}\n"
-        f"MASTER ARTIKEL:\n{draft['master_article']}"
-    )
+    if plat.lower() in ["facebook", "fb"] or fb_style:
+        from orchestrator.fb_personas import build_fb_prompt
+        style_key = f"fb_{fb_style}" if fb_style and not fb_style.startswith("fb_") else (fb_style or "fb_viral_santai")
+        fb_p = build_fb_prompt(style_key, draft.get("master_article", ""))
+        system_instruction = fb_p["system"]
+        prompt = f"{system_instruction}\n\n{fb_p['user']}"
+    else:
+        style_desc = f" gaya {fb_style}" if fb_style else ""
+        len_info = f" (format bebenang {thread_length} hantaran)" if thread_length > 0 else ""
+        prompt = (
+            f"Anda adalah Editor Konten Sakluma profesional. Tulis draf hantaran media sosial untuk platform {plat.upper()}{style_desc}{len_info}.\n\n"
+            f"SYARAT PENULISAN (STRICT CLEAN OUTPUT):\n"
+            f"1. DILARANG SAMA SEKALI memasukkan ayat muqaddimah sembang (contoh: 'Baiklah...', 'Tentu, berikut draf...').\n"
+            f"2. DILARANG SAMA SEKALI memasukkan cadangan visual/GIF (contoh: 'Gambar: Gabungan GIF...', 'Media: Gambar...').\n"
+            f"3. DILARANG SAMA SEKALI meletakkan label struktur (contoh: 'POST:', 'Kapsyen:', 'Tajuk:').\n"
+            f"4. MESTI 100% TEKS KAPSYEN BERSIH SAHAJA (Tajuk + Isi Kapsyen + Hashtag #MFS) yang sedia dipos terus ke media sosial.\n\n"
+            f"TAJUK ASAL: {draft['title']}\n"
+            f"MASTER ARTIKEL:\n{draft['master_article']}"
+        )
 
     def _sync_gemini_call(api_key: str) -> str:
         from google import genai
