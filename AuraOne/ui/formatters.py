@@ -105,11 +105,20 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
     price_match = re.search(r"\[DRAFT_ORIGINAL_PRICE:\s*(.+?)\]", response_text, re.IGNORECASE)
     location_match = re.search(r"\[DRAFT_SELLER_LOCATION:\s*(.+?)\]", response_text, re.IGNORECASE)
 
-    if title_match or master_match:
+    # Extract clean response text without [DRAFT_*] metadata tags as actual master article body fallback
+    raw_body = re.sub(r"\[DRAFT_[A-Z_]+:\s*.+?\]", "", response_text, flags=re.IGNORECASE | re.DOTALL).strip()
+
+    if title_match or master_match or (raw_body and len(raw_body) > 30):
         image_url = image_match.group(1).strip() if image_match else ""
         title = title_match.group(1).strip() if title_match else "Artikel Tanpa Tajuk"
         source_url = source_match.group(1).strip() if source_match else ""
         master_article = master_match.group(1).strip() if master_match else ""
+
+        # Fallback to raw LLM response body if master_article tag is empty or static placeholder
+        if not master_article or "Teks Master Article" in master_article or len(master_article) < 20:
+            if raw_body and len(raw_body) > 20:
+                master_article = raw_body
+
         hashtags = hashtags_match.group(1).strip() if hashtags_match else ""
 
         prefs = memory_repo.get_preferences()

@@ -221,7 +221,7 @@ async def _execute_direct_scrape_pipeline(url: str, user_id: int, chat_id: int, 
     # 2. Direct Master Article Generation Prompt (Neutral Core Context & Story Hub)
     prompt = (
         f"Anda adalah Editor Konten & Analyst Sakluma profesional.\n"
-        f"Tugas anda: Hasilkan Master Article dalam format Ringkasan Fakta Neutral & Cerita Penuh Artikel (Neutral Core Context & Story Hub) berdasarkan kandungan artikel berikut.\n\n"
+        f"Tugas anda: Tulis kandungan Master Article penuh dalam format Ringkasan Fakta Neutral & Cerita Penuh Artikel (Neutral Core Context & Story Hub) berdasarkan kandungan artikel berikut.\n\n"
         f"SYARAT & STRUKTUR MASTER ARTICLE:\n"
         f"1. Format Neutral & Tanpa Gaya Bahasa (Style-Free): DILARANG menggunakan gaya perbualan ('Adakah anda...', 'Sinar Harian baru-baru ini...'), DILARANG meletakkan Hashtag atau CTA dalam Master Article, DILARANG membuat muqaddimah karangan blog.\n"
         f"2. Struktur Wajib:\n"
@@ -232,12 +232,11 @@ async def _execute_direct_scrape_pipeline(url: str, user_id: int, chat_id: int, 
         f"TAJUK ASAL: {raw_title}\n"
         f"URL ASAL: {source_url}\n\n"
         f"KANDUNGAN ARTIKEL:\n{raw_content[:4000]}\n\n"
-        f"Sila kembalikan Master Article neutral ini dan MESTI menyertakan tag metadata [DRAFT_*] di bahagian AKHIR jawapan anda mengikut format tepat berikut:\n\n"
+        f"Sila tulis kandungan Master Article neutral secara lengkap dan terperinci. Di bahagian AKHIR jawapan anda, MESTI sertakan tag metadata [DRAFT_*] mengikut format berikut:\n\n"
         f"[DRAFT_TITLE: {raw_title}]\n"
         f"[DRAFT_SOURCE_URL: {source_url}]\n"
         f"[DRAFT_IMAGE: {image_url}]\n"
-        f"[DRAFT_HASHTAGS: #Sakluma #Trending #IsuSemasa]\n"
-        f"[DRAFT_MASTER_ARTICLE: Teks Master Article neutral lengkap di sini...]"
+        f"[DRAFT_HASHTAGS: #Sakluma #Trending #IsuSemasa]"
     )
 
     # 3. Call LLM directly (Gemini or OpenRouter Fallback)
