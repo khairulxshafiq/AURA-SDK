@@ -521,13 +521,13 @@ def _clean_platform_draft_output(text: str) -> str:
 
 # ─── Draft Generation & Confirmation Helpers ─────────────────────────────────
 
-async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0) -> str:
+async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0, fb_len: str = "panjang") -> str:
     global current_key_idx
     plat_lower = plat.lower()
     if plat_lower in ["facebook", "fb"] or (fb_style and plat_lower not in ["threads", "x", "twitter"]):
         from orchestrator.fb_personas import build_fb_prompt
         style_key = f"fb_{fb_style}" if fb_style and not fb_style.startswith("fb_") else (fb_style or "fb_viral_santai")
-        fb_p = build_fb_prompt(style_key, draft.get("master_article", ""))
+        fb_p = build_fb_prompt(style_key, draft.get("master_article", ""), length_option=fb_len)
         prompt = f"{fb_p['system']}\n\n{fb_p['user']}"
     elif plat_lower == "threads":
         from orchestrator.threads_x_personas import build_threads_prompt
@@ -549,7 +549,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
             f"1. DILARANG SAMA SEKALI memasukkan ayat muqaddimah sembang (contoh: 'Baiklah...', 'Tentu, berikut draf...').\n"
             f"2. DILARANG SAMA SEKALI memasukkan cadangan visual/GIF (contoh: 'Gambar: Gabungan GIF...', 'Media: Gambar...').\n"
             f"3. DILARANG SAMA SEKALI meletakkan label struktur (contoh: 'POST:', 'Kapsyen:', 'Tajuk:').\n"
-            f"4. MESTI 100% TEKS KAPSYEN BERSIH SAHAJA (Tajuk + Isi Kapsyen + Hashtag #MFS) yang sedia dipos terus ke media sosial.\n\n"
+            f"4. MESTI 100% TEKS KAPSYEN BERSIH SAHAJA (Tajuk + Isi Kapsyen + Hashtag #Sakluma) yang sedia dipos terus ke media sosial.\n\n"
             f"TAJUK ASAL: {draft['title']}\n"
             f"MASTER ARTIKEL:\n{draft['master_article']}"
         )
@@ -615,9 +615,10 @@ async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_pla
     generated_drafts = {}
     for plat in selected_platforms:
         fb_style = options.get("facebook", "viral_santai")
+        fb_len = options.get("fb_len", "panjang")
         thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
         try:
-            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length), timeout=15.0)
+            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len), timeout=15.0)
         except Exception as err:
             logger.error(f"Draft generation timeout/error for {plat}: {err}")
             style_label = f" ({fb_style})" if fb_style else ""
@@ -780,6 +781,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             state_data["options"] = state_data.get("options", {})
             if "facebook" in selected and "facebook" not in state_data["options"]:
                 state_data["options"]["facebook"] = "viral_santai"
+            if "facebook" in selected and "fb_len" not in state_data["options"]:
+                state_data["options"]["fb_len"] = "panjang"
             if ("x" in selected or "threads" in selected) and "thread_len" not in state_data["options"]:
                 state_data["options"]["thread_len"] = 5
 

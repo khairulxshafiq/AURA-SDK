@@ -60,6 +60,13 @@ def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
         if row:
             keyboard.append(row)
 
+        curr_fb_len = options.get("fb_len", "panjang")
+        keyboard.append([
+            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'pendek' else '⬜ '}FB: Pendek (8-15)", callback_data="sub:fb_len:pendek"),
+            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'biasa' else '⬜ '}FB: Biasa (36-50)", callback_data="sub:fb_len:biasa"),
+            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'panjang' else '⬜ '}FB: Panjang", callback_data="sub:fb_len:panjang")
+        ])
+
     if "x" in selected or "threads" in selected:
         curr_len = options.get("thread_len", 5)
         keyboard.append([
