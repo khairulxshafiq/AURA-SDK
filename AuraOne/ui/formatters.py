@@ -126,14 +126,19 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             telegram_file_id = update.message.photo[-1].file_id
             logger.info(f"Using incoming Telegram photo file_id: {telegram_file_id}")
 
+        # 1. Message 1: Send Photo Preview (short caption < 50 chars to avoid Telegram's 1,024 caption limit)
         if image_url and not telegram_file_id:
             try:
-                photo_msg = await context.bot.send_photo(chat_id=chat_id, photo=image_url)
+                photo_msg = await context.bot.send_photo(
+                    chat_id=chat_id,
+                    photo=image_url,
+                    caption="📸 Imej Artikel Utama"
+                )
                 if photo_msg and photo_msg.photo:
                     telegram_file_id = photo_msg.photo[-1].file_id
-                    logger.info(f"Successfully sent preview. Cached Telegram file_id: {telegram_file_id}")
-            except Exception as e:
-                logger.warning(f"Could not send photo preview: {e}")
+                    logger.info(f"Successfully sent photo preview. Cached Telegram file_id: {telegram_file_id}")
+            except Exception as photo_err:
+                logger.warning(f"Could not send photo preview ({image_url}): {photo_err}")
 
         selected_platforms_list = []
         user_txt = (update.message.text or update.message.caption or "").lower()
@@ -176,21 +181,42 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             daemon=True
         ).start()
 
+        # Truncate master_article to max 3500 chars to respect Telegram's 4,096 text message limit
+        display_article = master_article[:3500] if master_article else ""
+
         formatted_display = (
             f"📰 *MASTER ARTICLE (DRAFT GENERAL SAKLUMA)*\n\n"
             f"*{title}*\n\n"
-            f"{master_article}\n\n"
+            f"{display_article}\n\n"
             f"{hashtags or '#saklumanews #saklumaprihatin'}\n\n"
             f"👇 *Sila pilih platform & gaya penulisan di bawah untuk diolah:*"
         )
 
         reply_markup = _get_platform_keyboard(state_dict)
 
-        await update.message.reply_text(
-            formatted_display,
-            parse_mode="Markdown",
-            reply_markup=reply_markup
-        )
+        # 2. Message 2: Send Full Master Article Text + Inline Keyboards (wrapped in try-except)
+        try:
+            await update.message.reply_text(
+                formatted_display,
+                parse_mode="Markdown",
+                reply_markup=reply_markup
+            )
+        except Exception as msg_err:
+            logger.warning(f"Markdown reply failed ({msg_err}), falling back to plain text delivery...")
+            try:
+                plain_display = (
+                    f"📰 MASTER ARTICLE (DRAFT GENERAL SAKLUMA)\n\n"
+                    f"{title}\n\n"
+                    f"{display_article}\n\n"
+                    f"{hashtags or '#saklumanews #saklumaprihatin'}\n\n"
+                    f"👇 Sila pilih platform & gaya penulisan di bawah untuk diolah:"
+                )
+                await update.message.reply_text(
+                    plain_display,
+                    reply_markup=reply_markup
+                )
+            except Exception as fallback_err:
+                logger.error(f"Failed to send master article text message completely: {fallback_err}")
 
         return "[DRAFT_SENT_WITH_KEYBOARD]"
 
