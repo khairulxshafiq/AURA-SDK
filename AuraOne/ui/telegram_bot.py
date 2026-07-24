@@ -218,19 +218,26 @@ async def _execute_direct_scrape_pipeline(url: str, user_id: int, chat_id: int, 
         await update.message.reply_text("⚠️ Artikel yang di-scrape tidak mengandungi teks kandungan yang mencukupi.")
         return
 
-    # 2. Direct Master Article Generation Prompt
+    # 2. Direct Master Article Generation Prompt (Neutral Core Context & Story Hub)
     prompt = (
-        f"Anda adalah Editor Konten Sakluma profesional.\n"
-        f"Tugas anda: Hasilkan Master Article (Format Sakluma) yang menarik, mesra pembaca, dan berkualiti tinggi berdasarkan kandungan artikel berikut.\n\n"
+        f"Anda adalah Editor Konten & Analyst Sakluma profesional.\n"
+        f"Tugas anda: Hasilkan Master Article dalam format Ringkasan Fakta Neutral & Cerita Penuh Artikel (Neutral Core Context & Story Hub) berdasarkan kandungan artikel berikut.\n\n"
+        f"SYARAT & STRUKTUR MASTER ARTICLE:\n"
+        f"1. Format Neutral & Tanpa Gaya Bahasa (Style-Free): DILARANG menggunakan gaya perbualan ('Adakah anda...', 'Sinar Harian baru-baru ini...'), DILARANG meletakkan Hashtag atau CTA dalam Master Article, DILARANG membuat muqaddimah karangan blog.\n"
+        f"2. Struktur Wajib:\n"
+        f"   📌 TAJUK ASAL / FOKUS UTAMA: Tajuk ringkas isu\n"
+        f"   📝 RINGKASAN ISU / RINGKASAN CERITA: Cerita penuh secara kronologi/sebab-akibat tentang apa yang berlaku\n"
+        f"   📊 FAKTA & POIN PENTING: Senarai bullet points data, angka, atau kenyataan penting\n"
+        f"   💡 SUDUT PANDANG KUNCI: Intipati utama artikel yang boleh dijadikan bahan perbincangan\n\n"
         f"TAJUK ASAL: {raw_title}\n"
         f"URL ASAL: {source_url}\n\n"
         f"KANDUNGAN ARTIKEL:\n{raw_content[:4000]}\n\n"
-        f"Sila kembalikan Master Article dan MESTI menyertakan tag metadata [DRAFT_*] di bahagian AKHIR jawapan anda mengikut format tepat berikut:\n\n"
+        f"Sila kembalikan Master Article neutral ini dan MESTI menyertakan tag metadata [DRAFT_*] di bahagian AKHIR jawapan anda mengikut format tepat berikut:\n\n"
         f"[DRAFT_TITLE: {raw_title}]\n"
         f"[DRAFT_SOURCE_URL: {source_url}]\n"
         f"[DRAFT_IMAGE: {image_url}]\n"
         f"[DRAFT_HASHTAGS: #Sakluma #Trending #IsuSemasa]\n"
-        f"[DRAFT_MASTER_ARTICLE: Teks Master Article Sakluma lengkap di sini...]"
+        f"[DRAFT_MASTER_ARTICLE: Teks Master Article neutral lengkap di sini...]"
     )
 
     # 3. Call LLM directly (Gemini or OpenRouter Fallback)

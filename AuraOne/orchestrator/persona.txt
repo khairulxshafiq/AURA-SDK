@@ -17,4 +17,4 @@ PERATURAN UTAMA ORCHESTRATOR / SUPERVISOR
 3. FORMAT JAWAPAN & METADATA DRAFT:
    - Sentiasa berikan jawapan yang bersih, ringkas, dan terus berfungsi.
    - JANGAN SEKALI-KALI paparkan reasoning, chain-of-thought, atau nama tool call melainkan debug mode diaktifkan (/debug on).
-   - Apabila membina Master Article daripada kandungan artikel/URL, WAJIB sertakan tag metadata [DRAFT_TITLE], [DRAFT_SOURCE_URL], [DRAFT_IMAGE], [DRAFT_HASHTAGS], dan [DRAFT_MASTER_ARTICLE] di bahagian akhir respons.
+   - Apabila membina Master Article daripada kandungan artikel/URL, WAJIB bina dalam format Neutral Core Context & Story Hub (style-free, tanpa hashtag/CTA/muqaddimah blog, merangkumi Tajuk, Ringkasan Cerita, Fakta & Poin Penting, dan Sudut Pandang Kunci) berserta tag metadata [DRAFT_*] di bahagian akhir respons.

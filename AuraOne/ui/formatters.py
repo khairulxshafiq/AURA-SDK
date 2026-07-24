@@ -185,10 +185,9 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         display_article = master_article[:3500] if master_article else ""
 
         formatted_display = (
-            f"📰 *MASTER ARTICLE (DRAFT GENERAL SAKLUMA)*\n\n"
+            f"📰 *MASTER ARTICLE (NEUTRAL CORE CONTEXT & STORY HUB)*\n\n"
             f"*{title}*\n\n"
             f"{display_article}\n\n"
-            f"{hashtags or '#saklumanews #saklumaprihatin'}\n\n"
             f"👇 *Sila pilih platform & gaya penulisan di bawah untuk diolah:*"
         )
 
@@ -205,10 +204,9 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             logger.warning(f"Markdown reply failed ({msg_err}), falling back to plain text delivery...")
             try:
                 plain_display = (
-                    f"📰 MASTER ARTICLE (DRAFT GENERAL SAKLUMA)\n\n"
+                    f"📰 MASTER ARTICLE (NEUTRAL CORE CONTEXT & STORY HUB)\n\n"
                     f"{title}\n\n"
                     f"{display_article}\n\n"
-                    f"{hashtags or '#saklumanews #saklumaprihatin'}\n\n"
                     f"👇 Sila pilih platform & gaya penulisan di bawah untuk diolah:"
                 )
                 await update.message.reply_text(
