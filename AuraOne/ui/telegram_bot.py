@@ -778,8 +778,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         if not specific_draft:
             specific_draft = draft.get("master_article", "")
 
-        await query.message.reply_text(f"🚀 Muat naik gambar ke Google Drive & menyimpan draf {plat_to_confirm.upper()} ke Airtable...")
-        final_image_url = await _prepare_drive_image_for_airtable(
+        await query.message.reply_text(f"🚀 Penjanaan Telegram Direct CDN Link & muat naik draf {plat_to_confirm.upper()} ke Airtable...")
+        telegram_direct_cdn_url = await _prepare_drive_image_for_airtable(
             draft["image_url"], draft.get("telegram_file_id", ""), draft.get("counter_val", 0), context
         )
 
@@ -788,7 +788,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             caption=specific_draft,
             platform=plat_to_confirm,
             source_url=draft["source_url"],
-            image_url=final_image_url,
+            image_url=telegram_direct_cdn_url,
             status="Draft",
             hashtags=draft["hashtags"]
         )
@@ -799,7 +799,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 f"✅ *Draf Hantaran {plat_to_confirm.upper()} Berjaya Disahkan!*\n\n"
                 f"• *Tajuk*: {draft['title']}\n"
                 f"• *Platform*: {plat_to_confirm.upper()}\n"
-                f"• *Google Drive Image*: Berjaya dimuat naik 📸\n"
+                f"• *Telegram Direct CDN*: `{telegram_direct_cdn_url}` 📸\n"
                 f"• *Airtable Record*: Berjaya disimpan [Content Station] 🎉",
                 parse_mode="Markdown"
             )

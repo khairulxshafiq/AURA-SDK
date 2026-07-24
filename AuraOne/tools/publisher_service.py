@@ -213,9 +213,7 @@ def save_draft_to_airtable(
     if clean_caption:
         clean_caption = clean_caption.replace("**", "").replace("*", "")
 
-    # Ensure Google Drive URLs are NOT passed to Airtable attachment payload
-    valid_attachment_url = image_url if (image_url and "google.com" not in image_url.lower()) else ""
-
+    # SINGLE SOURCE OF TRUTH: Only Telegram CDN Direct File Link is used for Airtable Attachment ingestion
     fields = {
         "Title": title,
         "Caption": clean_caption,
@@ -226,8 +224,8 @@ def save_draft_to_airtable(
         "Created By": created_by,
         "Hashtags": hashtags,
         "Scheduled Date": scheduled_time,
-        "Image file": [{"url": valid_attachment_url}] if valid_attachment_url else None,
-        "Gambar": [{"url": valid_attachment_url}] if valid_attachment_url else None,
+        "Image file": [{"url": image_url}] if image_url else None,
+        "Gambar": [{"url": image_url}] if image_url else None,
         "Original Price": original_price if original_price else None,
         "Seller Location": seller_location if seller_location else None,
         "Source URL": source_url if source_url else None,
@@ -313,51 +311,28 @@ def _get_next_image_filename(image_url: str, counter: int) -> tuple[str, str]:
     return filename, mime
 
 async def _prepare_drive_image_for_airtable(image_url: str, telegram_file_id: str, counter: int, context) -> str:
-    """Upload image to Google Drive as backup archive, but return a direct public image URL (.jpg/.png/.webp or Telegram Direct File URL) for Airtable attachment ingestion."""
-    direct_url = image_url if (image_url and "google.com" not in image_url.lower()) else ""
+    """SINGLE SOURCE OF TRUTH: Generate 100% exclusive Telegram Direct CDN File Link (https://api.telegram.org/file/bot<TOKEN>/<FILE_PATH>)
+    for Airtable attachment ingestion, and perform background Google Drive backup archive upload."""
+    telegram_cdn_url = ""
 
-    if not image_url and not telegram_file_id:
-        return ""
+    if telegram_file_id and context and hasattr(context, "bot"):
+        try:
+            telegram_file = await context.bot.get_file(telegram_file_id)
+            if telegram_file and getattr(telegram_file, "file_path", None):
+                telegram_cdn_url = telegram_file.file_path
+                logger.info(f"[Airtable Single Source of Truth] Generated Telegram Direct CDN URL: {telegram_cdn_url}")
 
-    try:
-        img_bytes = None
-
-        if telegram_file_id and context:
+            # Background Google Drive Backup Archive Upload
             try:
-                telegram_file = await context.bot.get_file(telegram_file_id)
-                if telegram_file and hasattr(telegram_file, "file_path") and telegram_file.file_path:
-                    direct_url = telegram_file.file_path
-                    logger.info(f"Obtained Telegram direct file URL for Airtable: {direct_url}")
                 file_bytearray = await telegram_file.download_as_bytearray()
                 img_bytes = bytes(file_bytearray)
-                logger.info(f"Downloaded {len(img_bytes)} bytes from Telegram cache.")
-            except Exception as tg_err:
-                logger.warning(f"Telegram file download failed: {tg_err}")
-
-        if not img_bytes and image_url and "google.com" not in image_url.lower():
-            try:
-                logger.info(f"Downloading image via direct HTTP request: {image_url}")
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                }
-                with httpx.Client(timeout=15) as client:
-                    resp = client.get(image_url, headers=headers)
-                    if resp.status_code == 200:
-                        img_bytes = resp.content
-            except Exception as http_err:
-                logger.warning(f"Direct image HTTP fetch error: {http_err}")
-
-        # Perform background Google Drive backup upload if image bytes exist
-        if img_bytes:
-            try:
                 filename, mime = _get_next_image_filename(image_url or "image.jpg", counter)
-                drive_res = upload_file_to_drive(img_bytes, filename, mime_type=mime)
-                if drive_res.get("status") == "success":
-                    logger.info(f"Background Google Drive backup upload succeeded: {filename}")
+                upload_file_to_drive(img_bytes, filename, mime_type=mime)
+                logger.info(f"Background Google Drive backup completed: {filename}")
             except Exception as drive_err:
                 logger.warning(f"Drive backup upload failed: {drive_err}")
 
-    except Exception as e:
-        logger.error(f"Failed in _prepare_drive_image_for_airtable: {e}")
+        except Exception as tg_err:
+            logger.error(f"Failed to get Telegram file path for file_id {telegram_file_id}: {tg_err}")
 
-    return direct_url
+    return telegram_cdn_url
