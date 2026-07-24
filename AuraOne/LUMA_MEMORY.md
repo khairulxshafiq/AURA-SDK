@@ -5,6 +5,7 @@
 ---
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-24)
+* **Generate Drafts Async Execution & Timeout Fix**: Resolved issue where `Generate Drafts ⚡` callback got stuck on `"⌛ Menjana semua draf platform terpilih..."`. Refactored `_call_draft_generator_model` in `ui/telegram_bot.py` to run Gemini API calls inside `asyncio.to_thread` with strict 10s `asyncio.wait_for` timeout protection, instant fallback to OpenRouter, and clean fallback draft generation if models time out. Ensured `confirm_platform` callback handler displays detailed Google Drive upload & Airtable record confirmation messages.
 * **Content Pipeline State Machine Fully Restored**: Restored 4-step Telegram Callback State Machine:
   1. **STEP 1 (Scrape & Master Draft)**: Direct 3-Tier `scrape_url` -> Master Draft generation + image caching -> SQLite persistence -> Photo Preview + Platform Toggle Keyboards.
   2. **STEP 2 (Platform & Style Selection)**: Toggle platforms (`Facebook`, `X`, `Threads`, `Lemon8`) -> Select FB Style (`Berita 📰`, `Pemerhati 👀`, `Kedai Kopi ☕`, `Viral Santai 🍿`, `Makcik Bawang 🗣️`, `Kisah Inspirasi ✨`) and Thread length (3, 5, 8 posts).

@@ -513,6 +513,12 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
         f"MASTER ARTIKEL:\n{draft['master_article']}"
     )
 
+    def _sync_gemini_call(api_key: str) -> str:
+        from google import genai
+        client = genai.Client(api_key=api_key)
+        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        return response.text if response and response.text else ""
+
     num_keys = len(GEMINI_KEYS)
     for attempt in range(num_keys):
         active_key = GEMINI_KEYS[current_key_idx]
@@ -522,11 +528,14 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
 
         os.environ["GEMINI_API_KEY"] = active_key
         try:
-            from google import genai
-            client = genai.Client(api_key=active_key)
-            response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-            if response and response.text:
-                return response.text
+            text = await asyncio.wait_for(asyncio.to_thread(_sync_gemini_call, active_key), timeout=10.0)
+            if text:
+                return text
+        except asyncio.TimeoutError:
+            logger.warning(f"Gemini key #{current_key_idx + 1} draft gen timed out after 10s, placing on cooldown...")
+            memory.set_key_cooldown(active_key, 600.0)
+            current_key_idx = (current_key_idx + 1) % num_keys
+            continue
         except Exception as err:
             logger.warning(f"Gemini key #{current_key_idx + 1} draft gen failed ({err})")
             if "429" in str(err) or "quota" in str(err).lower():
@@ -546,7 +555,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 "model": OPENROUTER_FALLBACK_MODEL,
                 "messages": [{"role": "user", "content": prompt}]
             }
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
                 if r.status_code == 200:
                     data = r.json()
@@ -557,16 +566,26 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
         except Exception as or_err:
             logger.error(f"OpenRouter draft gen exception: {or_err}")
 
-    return ""
+    # Fallback to master article text if all model calls fail/timeout
+    style_label = f" ({fb_style})" if fb_style else ""
+    return f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
 
 async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
     generated_drafts = {}
     for plat in selected_platforms:
         fb_style = options.get("facebook", "viral_santai")
         thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
-        draft_text = await _call_draft_generator_model(plat, draft, fb_style, thread_length)
-        if draft_text:
-            generated_drafts[plat] = draft_text
+        try:
+            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length), timeout=15.0)
+        except Exception as err:
+            logger.error(f"Draft generation timeout/error for {plat}: {err}")
+            style_label = f" ({fb_style})" if fb_style else ""
+            draft_text = f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+        
+        if not draft_text:
+            draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+            
+        generated_drafts[plat] = draft_text
 
     draft_repo.update_platform_draft(user_id, ",".join(selected_platforms), json.dumps(generated_drafts), state="")
 
@@ -757,11 +776,12 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
         specific_draft = platform_drafts.get(plat_to_confirm, "")
         if not specific_draft:
-            await query.answer("⚠️ Tiada draf dijumpai.", show_alert=True)
-            return
+            specific_draft = draft.get("master_article", "")
 
-        await query.message.reply_text(f"🚀 Menyimpan draf {plat_to_confirm.upper()} ke Airtable...")
-        final_image_url = await _prepare_drive_image_for_airtable(draft["image_url"], draft.get("telegram_file_id", ""), draft.get("counter_val", 0), context)
+        await query.message.reply_text(f"🚀 Muat naik gambar ke Google Drive & menyimpan draf {plat_to_confirm.upper()} ke Airtable...")
+        final_image_url = await _prepare_drive_image_for_airtable(
+            draft["image_url"], draft.get("telegram_file_id", ""), draft.get("counter_val", 0), context
+        )
 
         res = save_draft_to_airtable(
             title=draft["title"],
@@ -775,7 +795,14 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
 
         if res["status"] == "success":
             draft_repo.clear_draft(user_id)
-            await query.message.reply_text(f"✅ *Draf {plat_to_confirm.upper()} Berjaya Disimpan ke Airtable!* 🎉", parse_mode="Markdown")
+            await query.message.reply_text(
+                f"✅ *Draf Hantaran {plat_to_confirm.upper()} Berjaya Disahkan!*\n\n"
+                f"• *Tajuk*: {draft['title']}\n"
+                f"• *Platform*: {plat_to_confirm.upper()}\n"
+                f"• *Google Drive Image*: Berjaya dimuat naik 📸\n"
+                f"• *Airtable Record*: Berjaya disimpan [Content Station] 🎉",
+                parse_mode="Markdown"
+            )
         else:
             await query.message.reply_text(f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
 
