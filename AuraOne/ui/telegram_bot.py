@@ -893,9 +893,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
                 if not conv_id and agent.conversation_id:
                     _register_conv_id_for_user(user_id, agent.conversation_id)
 
-            response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
-            if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
-                return
+            # General Chat Intent: Reply conversationally without invoking draft pipeline or attaching keyboards
             clean = _clean_response(response_text)
             await _send_telegram_msg(update, clean, parse_mode="Markdown")
             return
@@ -926,9 +924,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
                 if not conv_id and agent.conversation_id:
                     _register_conv_id_for_user(user_id, agent.conversation_id)
 
-            response_text = await _process_response_draft(user_id, chat_id, response_text, context, update)
-            if response_text == "[DRAFT_SENT_WITH_KEYBOARD]":
-                return
             clean = _clean_response(response_text)
             final_text = f"[P1] {OPENROUTER_FALLBACK_MODEL}\n\n{clean}" if not is_debug else f"🔧 *[DEBUG: OpenRouter]*\n\n{clean}"
             await _send_telegram_msg(update, final_text, parse_mode="Markdown")
