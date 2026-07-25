@@ -521,38 +521,52 @@ def _clean_platform_draft_output(text: str) -> str:
 
 # ─── Draft Generation & Confirmation Helpers ─────────────────────────────────
 
-async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0, fb_len: str = "panjang") -> str:
+async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0, fb_len: str = "panjang", fb_show_title: bool = False, tx_style: str = "genz") -> str:
     global current_key_idx
+    from prompts import build_prompt, enforce_fb_length_limits
+
     plat_lower = plat.lower()
-    if plat_lower in ["facebook", "fb"] or (fb_style and plat_lower not in ["threads", "x", "twitter"]):
-        from orchestrator.fb_personas import build_fb_prompt
-        style_key = f"fb_{fb_style}" if fb_style and not fb_style.startswith("fb_") else (fb_style or "fb_viral_santai")
-        fb_p = build_fb_prompt(style_key, draft.get("master_article", ""), length_option=fb_len)
-        prompt = f"{fb_p['system']}\n\n{fb_p['user']}"
-    elif plat_lower == "threads":
-        from orchestrator.threads_x_personas import build_threads_prompt
-        count_key = str(thread_length) if thread_length in [3, 5, 8] else "5"
-        style_key = fb_style or "catchy"
-        tp = build_threads_prompt(count_key, style_key, draft.get("master_article", ""))
-        prompt = f"{tp['system']}\n\n{tp['user']}"
-    elif plat_lower in ["x", "twitter"]:
-        from orchestrator.threads_x_personas import build_x_prompt
-        style_key = fb_style or "catchy"
-        xp = build_x_prompt(style_key, draft.get("master_article", ""))
-        prompt = f"{xp['system']}\n\n{xp['user']}"
-    else:
-        style_desc = f" gaya {fb_style}" if fb_style else ""
-        len_info = f" (format bebenang {thread_length} hantaran)" if thread_length > 0 else ""
-        prompt = (
-            f"Anda adalah Editor Konten Sakluma profesional. Tulis draf hantaran media sosial untuk platform {plat.upper()}{style_desc}{len_info}.\n\n"
-            f"SYARAT PENULISAN (STRICT CLEAN OUTPUT):\n"
-            f"1. DILARANG SAMA SEKALI memasukkan ayat muqaddimah sembang (contoh: 'Baiklah...', 'Tentu, berikut draf...').\n"
-            f"2. DILARANG SAMA SEKALI memasukkan cadangan visual/GIF (contoh: 'Gambar: Gabungan GIF...', 'Media: Gambar...').\n"
-            f"3. DILARANG SAMA SEKALI meletakkan label struktur (contoh: 'POST:', 'Kapsyen:', 'Tajuk:').\n"
-            f"4. MESTI 100% TEKS KAPSYEN BERSIH SAHAJA (Tajuk + Isi Kapsyen + Hashtag #Sakluma) yang sedia dipos terus ke media sosial.\n\n"
-            f"TAJUK ASAL: {draft['title']}\n"
-            f"MASTER ARTIKEL:\n{draft['master_article']}"
-        )
+    try:
+        if plat_lower in ["facebook", "fb"] or (fb_style and plat_lower not in ["threads", "x", "twitter"]):
+            style_key = fb_style or "viral_santai"
+            sys_p, usr_p = build_prompt(
+                platform="facebook",
+                style=style_key,
+                length=fb_len,
+                show_title=fb_show_title,
+                raw=draft.get("master_article", "")
+            )
+            prompt = f"{sys_p}\n\n{usr_p}"
+        elif plat_lower == "threads":
+            count_key = str(thread_length) if thread_length in [1, 3, 5, 8] else "5"
+            style_key = tx_style or "genz"
+            sys_p, usr_p = build_prompt(
+                platform="threads",
+                style=style_key,
+                count=count_key,
+                raw=draft.get("master_article", "")
+            )
+            prompt = f"{sys_p}\n\n{usr_p}"
+        elif plat_lower in ["x", "twitter"]:
+            count_key = str(thread_length) if thread_length in [1, 3, 5, 8] else "1"
+            style_key = tx_style or "genz"
+            sys_p, usr_p = build_prompt(
+                platform="x",
+                style=style_key,
+                count=count_key,
+                raw=draft.get("master_article", "")
+            )
+            prompt = f"{sys_p}\n\n{usr_p}"
+        else:
+            sys_p, usr_p = build_prompt(
+                platform=plat_lower,
+                style=fb_style or "estetik",
+                raw=draft.get("master_article", "")
+            )
+            prompt = f"{sys_p}\n\n{usr_p}"
+    except KeyError as k_err:
+        logger.error(f"Prompt registry KeyError for platform {plat}: {k_err}")
+        raise k_err
 
     def _sync_gemini_call(api_key: str) -> str:
         from google import genai
@@ -571,7 +585,10 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
         try:
             text = await asyncio.wait_for(asyncio.to_thread(_sync_gemini_call, active_key), timeout=10.0)
             if text:
-                return _clean_platform_draft_output(text)
+                cleaned = _clean_platform_draft_output(text)
+                if plat_lower in ["facebook", "fb"]:
+                    cleaned = enforce_fb_length_limits(cleaned, fb_len=fb_len, show_title=fb_show_title)
+                return cleaned
         except asyncio.TimeoutError:
             logger.warning(f"Gemini key #{current_key_idx + 1} draft gen timed out after 10s, placing on cooldown...")
             memory.set_key_cooldown(active_key, 600.0)
@@ -601,7 +618,10 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 if r.status_code == 200:
                     data = r.json()
                     content = data["choices"][0]["message"]["content"]
-                    return _clean_platform_draft_output(content)
+                    cleaned = _clean_platform_draft_output(content)
+                    if plat_lower in ["facebook", "fb"]:
+                        cleaned = enforce_fb_length_limits(cleaned, fb_len=fb_len, show_title=fb_show_title)
+                    return cleaned
                 else:
                     logger.error(f"OpenRouter draft gen error ({r.status_code}): {r.text[:200]}")
         except Exception as or_err:
@@ -609,16 +629,21 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
 
     # Fallback to master article text if all model calls fail/timeout
     style_label = f" ({fb_style})" if fb_style else ""
-    return _clean_platform_draft_output(f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}")
+    fallback_txt = _clean_platform_draft_output(f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}")
+    if plat_lower in ["facebook", "fb"]:
+        fallback_txt = enforce_fb_length_limits(fallback_txt, fb_len=fb_len, show_title=fb_show_title)
+    return fallback_txt
 
 async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
     generated_drafts = {}
     for plat in selected_platforms:
         fb_style = options.get("facebook", "viral_santai")
         fb_len = options.get("fb_len", "panjang")
+        fb_show_title = options.get("fb_show_title", False)
+        tx_style = options.get("tx_style", "genz")
         thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
         try:
-            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len), timeout=15.0)
+            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style), timeout=15.0)
         except Exception as err:
             logger.error(f"Draft generation timeout/error for {plat}: {err}")
             style_label = f" ({fb_style})" if fb_style else ""
@@ -783,6 +808,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 state_data["options"]["facebook"] = "viral_santai"
             if "facebook" in selected and "fb_len" not in state_data["options"]:
                 state_data["options"]["fb_len"] = "panjang"
+            if "facebook" in selected and "fb_show_title" not in state_data["options"]:
+                state_data["options"]["fb_show_title"] = False
             if ("x" in selected or "threads" in selected) and "thread_len" not in state_data["options"]:
                 state_data["options"]["thread_len"] = 5
 
@@ -791,11 +818,14 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.reply_text("Pilih pilihan sub-platform boss:", reply_markup=reply_markup)
     elif data.startswith("sub:"):
         parts = data.split(":")
-        if len(parts) == 3:
-            key, val = parts[1], parts[2]
+        if len(parts) >= 2:
+            key = parts[1]
+            val = parts[2] if len(parts) > 2 else ""
             options = state_data.get("options", {})
             if key == "thread_len":
                 options["thread_len"] = int(val) if val.isdigit() else 5
+            elif key == "fb_show_title":
+                options["fb_show_title"] = not options.get("fb_show_title", False)
             else:
                 options[key] = val
             state_data["options"] = options
