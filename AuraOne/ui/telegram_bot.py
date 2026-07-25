@@ -957,6 +957,38 @@ async def _call_supervisor_chat_model(agent_message: str) -> str:
 
     return "Ya, AURA di sini! Ada apa-apa yang saya boleh bantu hari ini? ⚡"
 
+# ─── Intent Router Helpers ───────────────────────────────────────────────────
+
+URL_RE = re.compile(r'https?://\S+', re.IGNORECASE)
+SCRAPE_TRIGGER_RE = re.compile(r'\bscrape\b', re.IGNORECASE)
+
+def _is_bare_url(text: str) -> bool:
+    """Return True if text consists of a URL with 3 or fewer additional words."""
+    stripped = URL_RE.sub('', text).strip()
+    return len(stripped.split()) <= 3
+
+def route_intent(message_text: str) -> str:
+    """Determine message intent: SCRAPE_PIPELINE, URL_SUGGEST, CONTEXTUAL_CHAT, or DAILY_CHAT."""
+    text = message_text.strip()
+    has_url = bool(URL_RE.search(text))
+    is_s2 = text.lower().startswith('/s2') or bool(re.match(r'^/s\d+', text, re.IGNORECASE))
+    has_scrape_word = bool(SCRAPE_TRIGGER_RE.search(text))
+
+    # 1) Trigger scrape eksplisit
+    if has_url and (is_s2 or has_scrape_word):
+        return "SCRAPE_PIPELINE"
+
+    # 2) URL kosong sahaja (takde teks lain bermakna, takde trigger)
+    if has_url and _is_bare_url(text):
+        return "URL_SUGGEST"
+
+    # 3) URL + teks/soalan (tapi takde perkataan scrape)
+    if has_url and not has_scrape_word:
+        return "CONTEXTUAL_CHAT"
+
+    # 4) Takde URL → chat harian biasa (KEKAL)
+    return "DAILY_CHAT"
+
 # ─── Message Handler Router ───────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, override_text: str = None):
@@ -976,12 +1008,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             await confirm_command(update, context)
             return
 
-        if "http://" in msg_clean or "https://" in msg_clean or msg_clean.startswith("scrape"):
-            url_match = re.search(r"https?://\S+", user_message)
-            if url_match:
-                target_url = url_match.group(0)
-                await _execute_direct_scrape_pipeline(target_url, user_id, chat_id, context, update)
-                return
+        intent = route_intent(user_message)
+        logger.info(f"[IntentRouter] Message '{user_message[:40]}...' routed to intent: {intent}")
+
+        if intent == "SCRAPE_PIPELINE":
+            url_match = URL_RE.search(user_message)
+            target_url = url_match.group(0) if url_match else user_message
+            await _execute_direct_scrape_pipeline(target_url, user_id, chat_id, context, update)
+            return
+
+        elif intent == "URL_SUGGEST":
+            url_match = URL_RE.search(user_message)
+            target_url = url_match.group(0) if url_match else ""
+            reply_text = (
+                f"Aku nampak kau share link ni 🔗\n"
+                f"`{target_url}`\n\n"
+                f"Nak aku buat apa dengan dia?\n\n"
+                f"• 📰 *Scrape jadi content* → taip: `Scrape {target_url}`\n"
+                f"• 🔍 *Ringkas / info pantas* → tanya je apa kau nak tau\n"
+                f"• 💬 *Sembang biasa pasal ni*\n\n"
+                f"Bagitau je boss."
+            )
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("📰 Scrape Jadi Content", callback_data=f"do_scrape:{target_url}"),
+                    InlineKeyboardButton("🔍 Info Pantas", callback_data=f"do_summarize:{target_url}")
+                ]
+            ])
+            await _send_telegram_msg(update, reply_text, reply_markup=keyboard, parse_mode="Markdown", disable_preview=True)
+            return
+
+        elif intent == "CONTEXTUAL_CHAT":
+            url_match = URL_RE.search(user_message)
+            target_url = url_match.group(0) if url_match else ""
+            await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+            response_text = await _call_supervisor_chat_model(user_message)
+            clean = _clean_response(response_text)
+            if target_url and target_url not in clean:
+                clean += f"\n\n_(Nota: Kalau nak aku jadikan content, taip `Scrape {target_url}` ye.)_"
+            await _send_telegram_msg(update, clean, parse_mode="Markdown")
+            return
+
         elif any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
             await send_gnews_trending(update, context, category="trending", max_items=6)
             return
