@@ -62,17 +62,35 @@ def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
 
         curr_fb_len = options.get("fb_len", "panjang")
         keyboard.append([
-            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'pendek' else '⬜ '}FB: Pendek (8-15)", callback_data="sub:fb_len:pendek"),
-            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'biasa' else '⬜ '}FB: Biasa (36-50)", callback_data="sub:fb_len:biasa"),
-            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'panjang' else '⬜ '}FB: Panjang", callback_data="sub:fb_len:panjang")
+            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'pendek' else '⬜ '}Pendek", callback_data="sub:fb_len:pendek"),
+            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'biasa' else '⬜ '}Biasa", callback_data="sub:fb_len:biasa"),
+            InlineKeyboardButton(f"{'✅ ' if curr_fb_len == 'panjang' else '⬜ '}Panjang", callback_data="sub:fb_len:panjang")
+        ])
+
+        curr_show_title = options.get("fb_show_title", False)
+        keyboard.append([
+            InlineKeyboardButton(f"{'✅ ' if curr_show_title else '⬜ '}FB: Sertakan Tajuk 📌", callback_data="sub:fb_show_title:toggle")
         ])
 
     if "x" in selected or "threads" in selected:
+        curr_tx_style = options.get("tx_style", "genz")
+        tx_personas = [
+            ("genz", "X/Threads: GenZ ⚡"),
+            ("informative", "X/Threads: Informative 📊"),
+            ("kepoh", "X/Threads: Kepoh 🗣️")
+        ]
+        tx_row = []
+        for code, label in tx_personas:
+            status = "✅ " if curr_tx_style == code else "⬜ "
+            tx_row.append(InlineKeyboardButton(f"{status}{label}", callback_data=f"sub:tx_style:{code}"))
+        keyboard.append(tx_row)
+
         curr_len = options.get("thread_len", 5)
         keyboard.append([
-            InlineKeyboardButton(f"{'✅ ' if curr_len == 3 else '⬜ '}Bebenang: 3 Post", callback_data="sub:thread_len:3"),
-            InlineKeyboardButton(f"{'✅ ' if curr_len == 5 else '⬜ '}Bebenang: 5 Post", callback_data="sub:thread_len:5"),
-            InlineKeyboardButton(f"{'✅ ' if curr_len == 8 else '⬜ '}Bebenang: 8 Post", callback_data="sub:thread_len:8")
+            InlineKeyboardButton(f"{'✅ ' if curr_len == 1 else '⬜ '}1 Post", callback_data="sub:thread_len:1"),
+            InlineKeyboardButton(f"{'✅ ' if curr_len == 3 else '⬜ '}3 Bebenang", callback_data="sub:thread_len:3"),
+            InlineKeyboardButton(f"{'✅ ' if curr_len == 5 else '⬜ '}5 Bebenang", callback_data="sub:thread_len:5"),
+            InlineKeyboardButton(f"{'✅ ' if curr_len == 8 else '⬜ '}8 Bebenang", callback_data="sub:thread_len:8")
         ])
 
     keyboard.append([InlineKeyboardButton("Generate Drafts ⚡", callback_data="sub_next")])
