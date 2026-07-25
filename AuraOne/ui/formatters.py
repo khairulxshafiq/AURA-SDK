@@ -131,6 +131,7 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
         memory_repo.update_preference("image_counter", str(counter))
 
         telegram_file_id = ""
+        tg_cdn_url = ""
         if update.message and update.message.photo:
             telegram_file_id = update.message.photo[-1].file_id
             logger.info(f"Using incoming Telegram photo file_id: {telegram_file_id}")
@@ -148,6 +149,13 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
                     logger.info(f"Successfully sent photo preview. Cached Telegram file_id: {telegram_file_id}")
             except Exception as photo_err:
                 logger.warning(f"Could not send photo preview ({image_url}): {photo_err}")
+
+        if telegram_file_id:
+            try:
+                from tools.publisher_service import stage_image_telegram
+                tg_cdn_url = await stage_image_telegram(context, telegram_file_id)
+            except Exception as cdn_err:
+                logger.warning(f"Could not resolve Telegram CDN URL: {cdn_err}")
 
         selected_platforms_list = []
         user_txt = (update.message.text or update.message.caption or "").lower()
@@ -179,9 +187,10 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             telegram_file_id=telegram_file_id,
             counter_val=counter,
             source_url=source_url,
-            state=initial_state
+            state=initial_state,
+            tg_cdn_url=tg_cdn_url
         )
-        logger.info(f"Saved content draft for user {user_id}: {title} (counter_val={counter})")
+        logger.info(f"Saved content draft for user {user_id}: {title} (counter_val={counter}, tg_cdn_url={tg_cdn_url[:30]}...)")
 
         import threading
         threading.Thread(

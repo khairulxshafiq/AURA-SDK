@@ -310,29 +310,41 @@ def _get_next_image_filename(image_url: str, counter: int) -> tuple[str, str]:
     filename = f"web-{counter}.{ext}"
     return filename, mime
 
+async def stage_image_telegram(context, telegram_file_id: str) -> str:
+    """Stage image temporarily in Telegram file system and return its Direct CDN URL (https://api.telegram.org/file/bot<TOKEN>/<file_path>)."""
+    if not telegram_file_id or not context or not hasattr(context, "bot"):
+        return ""
+    try:
+        telegram_file = await context.bot.get_file(telegram_file_id)
+        if telegram_file and getattr(telegram_file, "file_path", None):
+            telegram_cdn_url = telegram_file.file_path
+            logger.info(f"[Telegram Image Holding] Generated Telegram Direct CDN URL: {telegram_cdn_url}")
+            return telegram_cdn_url
+    except Exception as tg_err:
+        logger.error(f"stage_image_telegram failed for file_id {telegram_file_id}: {tg_err}")
+    return ""
+
 async def _prepare_drive_image_for_airtable(image_url: str, telegram_file_id: str, counter: int, context) -> str:
-    """SINGLE SOURCE OF TRUTH: Generate 100% exclusive Telegram Direct CDN File Link (https://api.telegram.org/file/bot<TOKEN>/<FILE_PATH>)
-    for Airtable attachment ingestion, and perform background Google Drive backup archive upload."""
-    telegram_cdn_url = ""
+    """Generate Telegram Direct CDN File Link for Airtable attachment ingestion."""
+    return await stage_image_telegram(context, telegram_file_id)
 
-    if telegram_file_id and context and hasattr(context, "bot"):
-        try:
-            telegram_file = await context.bot.get_file(telegram_file_id)
-            if telegram_file and getattr(telegram_file, "file_path", None):
-                telegram_cdn_url = telegram_file.file_path
-                logger.info(f"[Airtable Single Source of Truth] Generated Telegram Direct CDN URL: {telegram_cdn_url}")
+def push_image_to_airtable(
+    tg_cdn_url: str,
+    title: str,
+    caption: str,
+    platform: str = "facebook",
+    source_url: str = "",
+    hashtags: str = "",
+    status: str = "Draft"
+) -> dict:
+    """Push staged Telegram CDN image and draft content to Airtable Content Station upon user confirmation."""
+    return save_draft_to_airtable(
+        title=title,
+        caption=caption,
+        platform=platform,
+        source_url=source_url,
+        image_url=tg_cdn_url,
+        status=status,
+        hashtags=hashtags
+    )
 
-            # Background Google Drive Backup Archive Upload
-            try:
-                file_bytearray = await telegram_file.download_as_bytearray()
-                img_bytes = bytes(file_bytearray)
-                filename, mime = _get_next_image_filename(image_url or "image.jpg", counter)
-                upload_file_to_drive(img_bytes, filename, mime_type=mime)
-                logger.info(f"Background Google Drive backup completed: {filename}")
-            except Exception as drive_err:
-                logger.warning(f"Drive backup upload failed: {drive_err}")
-
-        except Exception as tg_err:
-            logger.error(f"Failed to get Telegram file path for file_id {telegram_file_id}: {tg_err}")
-
-    return telegram_cdn_url

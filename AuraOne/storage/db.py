@@ -68,6 +68,7 @@ def init_db() -> None:
             hashtags TEXT,
             image_url TEXT,
             telegram_file_id TEXT,
+            tg_cdn_url TEXT,
             counter_val INTEGER,
             source_url TEXT,
             selected_platform TEXT,
@@ -76,6 +77,12 @@ def init_db() -> None:
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+
+    # Migration check for existing databases
+    try:
+        cursor.execute("ALTER TABLE drafts ADD COLUMN tg_cdn_url TEXT")
+    except sqlite3.OperationalError:
+        pass # Column already exists
 
     # Insert default preferences if empty
     cursor.execute("SELECT COUNT(*) FROM preferences")

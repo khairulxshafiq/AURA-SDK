@@ -11,23 +11,25 @@ def save_draft(
     source_url: str,
     selected_platform: str = "",
     platform_draft: str = "",
-    state: str = ""
+    state: str = "",
+    tg_cdn_url: str = ""
 ) -> None:
     """Save or overwrite the active draft for a user."""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
         INSERT INTO drafts (
-            user_id, title, master_article, hashtags, image_url, telegram_file_id, counter_val, source_url, 
+            user_id, title, master_article, hashtags, image_url, telegram_file_id, tg_cdn_url, counter_val, source_url, 
             selected_platform, platform_draft, state, created_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         ON CONFLICT(user_id) DO UPDATE SET 
             title=excluded.title, 
             master_article=excluded.master_article, 
             hashtags=excluded.hashtags, 
             image_url=excluded.image_url, 
             telegram_file_id=excluded.telegram_file_id, 
+            tg_cdn_url=excluded.tg_cdn_url, 
             counter_val=excluded.counter_val, 
             source_url=excluded.source_url, 
             selected_platform=excluded.selected_platform, 
@@ -35,7 +37,7 @@ def save_draft(
             state=excluded.state,
             created_at=CURRENT_TIMESTAMP
     """, (
-        user_id, title, master_article, hashtags, image_url, telegram_file_id, counter_val, source_url,
+        user_id, title, master_article, hashtags, image_url, telegram_file_id, tg_cdn_url, counter_val, source_url,
         selected_platform, platform_draft, state
     ))
     conn.commit()
@@ -71,7 +73,7 @@ def get_draft(user_id: int) -> dict | None:
     cursor = conn.cursor()
     cursor.execute("""
         SELECT 
-            title, master_article, hashtags, image_url, telegram_file_id, counter_val, source_url, 
+            title, master_article, hashtags, image_url, telegram_file_id, tg_cdn_url, counter_val, source_url, 
             selected_platform, platform_draft, state 
         FROM drafts WHERE user_id = ?
     """, (user_id,))
@@ -84,11 +86,12 @@ def get_draft(user_id: int) -> dict | None:
             "hashtags": row[2],
             "image_url": row[3],
             "telegram_file_id": row[4],
-            "counter_val": row[5],
-            "source_url": row[6],
-            "selected_platform": row[7],
-            "platform_draft": row[8],
-            "state": row[9]
+            "tg_cdn_url": row[5] or "",
+            "counter_val": row[6],
+            "source_url": row[7],
+            "selected_platform": row[8],
+            "platform_draft": row[9],
+            "state": row[10]
         }
     return None
 
