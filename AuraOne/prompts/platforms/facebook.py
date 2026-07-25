@@ -10,13 +10,13 @@ Contains 6 distinct personas for Facebook caption generation:
 """
 
 from prompts.shared.global_rules import GLOBAL_RULES
+from prompts.shared.hashtags import get_hashtags
 from prompts.modifiers.length import get_length_instruction
 
 FB_PERSONAS = {
     # 1) 📰 BERITA — wartawan faksual, ZERO EMOJI, Tajuk + Dateline
     "berita": {
         "label": "FB: Berita 📰",
-        "hashtag": "#SaklumaNews",
         "systemPrompt": f"""
 Kau ialah editor berita ringkas untuk page Facebook.
 TUGAS: Tulis semula INPUT dalam gaya BERITA.
@@ -39,7 +39,6 @@ ELAK:
     # 2) ☕ KEDAI KOPI — ZERO EMOJI, Pesanan Masyarakat & Nasihat Ringkas
     "kedai_kopi": {
         "label": "FB: Kedai Kopi ☕",
-        "hashtag": "#Sakluma",
         "systemPrompt": f"""
 Kau ialah "orang kedai kopi" — berterus-terang, mesra, humanize, dan menyampaikan pesanan masyarakat.
 TUGAS: Olah INPUT jadi post gaya KEDAI KOPI (Pesanan Masyarakat & Nasihat Ringkas).
@@ -66,7 +65,6 @@ ELAK:
     # 3) 🧅 MAKCIK BAWANG — Ayat Bombastik, Bergossip & Ajak Respond
     "makcik_bawang": {
         "label": "FB: Makcik Bawang 🗣️",
-        "hashtag": "#Sakluma",
         "systemPrompt": f"""
 Kau ialah "Makcik Bawang" — heboh, bergosip dramatik, dan suka ajak pembaca bagi ulasan/respond.
 TUGAS: Olah INPUT jadi post gaya MAKCIK BAWANG (Ayat Bombastik & Ajak Komen).
@@ -91,7 +89,6 @@ ELAK:
     # 4) 👀 PEMERHATI — Opinion Peribadi, Olahan Cerita, Pengalaman & Situasi
     "pemerhati": {
         "label": "FB: Pemerhati 👀",
-        "hashtag": "#Sakluma",
         "systemPrompt": f"""
 Kau ialah seorang "pemerhati" — orang yang membaca sesuatu berita dan menuliskan pendapat/opinion peribadi berasaskan pengalaman dan situasi realiti.
 TUGAS: Olah INPUT jadi post gaya PEMERHATI (Opinion Peribadi & Olahan Situasi).
@@ -116,7 +113,6 @@ ELAK:
     # 5) 🔥 VIRAL SANTAI — Cerita Ceria, Ajakan, & Gossip Opinion
     "viral_santai": {
         "label": "FB: Viral Santai 🍿",
-        "hashtag": "#SaklumaViral",
         "systemPrompt": f"""
 Kau ialah admin page santai yang menyampaikan cerita ceria, ajakan mesra, dan gossip opinion ringan.
 TUGAS: Olah INPUT jadi post gaya VIRAL SANTAI (Ceria & Opinion Gossip Ringan).
@@ -140,7 +136,6 @@ ELAK:
     # 6) ✨ KISAH INSPIRASI — Menghormati Perjuangan & Membuat Orang Kagum
     "kisah_inspirasi": {
         "label": "FB: Kisah Inspirasi ✨",
-        "hashtag": "#SaklumaInspirasi",
         "systemPrompt": f"""
 Kau ialah pencerita kisah inspirasi yang membuatkan pembaca rasa kagum dan tersentuh.
 TUGAS: Olah INPUT jadi post gaya KISAH INSPIRASI (Kagum & Motivasi).
@@ -163,7 +158,7 @@ ELAK:
 }
 
 
-def build_facebook_prompt(style: str, raw_content: str, length: str = "panjang", show_title: bool = False) -> tuple[str, str]:
+def build_facebook_prompt(style: str, raw_content: str, length: str = "panjang", show_title: bool = False, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk Facebook.
     Raises KeyError jika gaya tidak wujud dalam FB_PERSONAS.
     """
@@ -190,11 +185,13 @@ def build_facebook_prompt(style: str, raw_content: str, length: str = "panjang",
         )
 
     len_instruction = get_length_instruction(length)
+    persona_key = f"fb_{key}"
+    tags = get_hashtags(persona_key, count=2, seed=seed)
 
     user_prompt = (
         f"INPUT / BAHAN MENTAH:\n{raw_content}\n\n"
         f"HASILKAN caption Facebook mengikut gaya \"{p['label']}\".{title_instruction}{len_instruction}\n"
-        f"Akhiri dengan 1 baris kosong dan hashtag {p['hashtag']} sahaja."
+        f"Akhiri post dengan 1 baris kosong dan hashtag ini sahaja: {tags}."
     )
 
     return system_prompt, user_prompt

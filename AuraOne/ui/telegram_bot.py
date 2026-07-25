@@ -501,6 +501,8 @@ def _clean_platform_draft_output(text: str) -> str:
     if not text:
         return ""
 
+    from prompts import sanitize_hashtags
+
     # 1. Remove visual/GIF recommendations
     cleaned = re.sub(r"\[?(?:Gambar|Media|Visual|Cadangan GIF|GIF):\s*.*?\]?", "", text, flags=re.IGNORECASE)
     cleaned = re.sub(r"\((?:Gambar|Media|Visual|Cadangan GIF|GIF):\s*.*?\)", "", cleaned, flags=re.IGNORECASE)
@@ -517,7 +519,7 @@ def _clean_platform_draft_output(text: str) -> str:
         lines.append(line_clean)
 
     cleaned_text = "\n".join(lines).strip()
-    return cleaned_text
+    return sanitize_hashtags(cleaned_text)
 
 # ─── Draft Generation & Confirmation Helpers ─────────────────────────────────
 
@@ -526,6 +528,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
     from prompts import build_prompt, enforce_fb_length_limits
 
     plat_lower = plat.lower()
+    seed_val = draft.get("counter_val", 0)
     try:
         if plat_lower in ["facebook", "fb"] or (fb_style and plat_lower not in ["threads", "x", "twitter"]):
             style_key = fb_style or "viral_santai"
@@ -534,7 +537,8 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 style=style_key,
                 length=fb_len,
                 show_title=fb_show_title,
-                raw=draft.get("master_article", "")
+                raw=draft.get("master_article", ""),
+                seed=seed_val
             )
             prompt = f"{sys_p}\n\n{usr_p}"
         elif plat_lower == "threads":
@@ -544,7 +548,8 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 platform="threads",
                 style=style_key,
                 count=count_key,
-                raw=draft.get("master_article", "")
+                raw=draft.get("master_article", ""),
+                seed=seed_val
             )
             prompt = f"{sys_p}\n\n{usr_p}"
         elif plat_lower in ["x", "twitter"]:
@@ -554,14 +559,16 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 platform="x",
                 style=style_key,
                 count=count_key,
-                raw=draft.get("master_article", "")
+                raw=draft.get("master_article", ""),
+                seed=seed_val
             )
             prompt = f"{sys_p}\n\n{usr_p}"
         else:
             sys_p, usr_p = build_prompt(
                 platform=plat_lower,
                 style=fb_style or "estetik",
-                raw=draft.get("master_article", "")
+                raw=draft.get("master_article", ""),
+                seed=seed_val
             )
             prompt = f"{sys_p}\n\n{usr_p}"
     except KeyError as k_err:

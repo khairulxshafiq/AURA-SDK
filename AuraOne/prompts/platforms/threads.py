@@ -4,6 +4,7 @@ Contains thread count configurations (1, 3, 5, 8) and styles (genz, informative,
 """
 
 from prompts.shared.global_rules import GLOBAL_RULES
+from prompts.shared.hashtags import get_hashtags
 
 THREADS_GLOBAL = f"""
 PERATURAN AM (Threads):
@@ -60,7 +61,7 @@ THREADS_STYLES = {
 }
 
 
-def build_threads_prompt(style: str, count: str | int, raw_content: str) -> tuple[str, str]:
+def build_threads_prompt(style: str, count: str | int, raw_content: str, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk Threads.
     Raises KeyError jika style atau count tidak wujud.
     """
@@ -76,6 +77,7 @@ def build_threads_prompt(style: str, count: str | int, raw_content: str) -> tupl
 
     c = THREAD_COUNTS[ck]
     s = THREADS_STYLES[sk]
+    tags = get_hashtags("threads", count=2, seed=seed)
 
     system_prompt = f"""Kau ialah copywriter Threads profesional.
 {s['guide']}
@@ -88,6 +90,7 @@ def build_threads_prompt(style: str, count: str | int, raw_content: str) -> tupl
 {raw_content}
 
 Hasilkan Threads: {c['label']} dalam gaya "{s['label']}".
-Ingat: pisahkan setiap bebenang dengan "---"."""
+Ingat: pisahkan setiap bebenang dengan "---".
+Akhiri post dengan hashtag ini di bahagian hujung: {tags}."""
 
     return system_prompt, user_prompt

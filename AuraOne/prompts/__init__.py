@@ -2,14 +2,15 @@
 AURA PROMPT ENGINE — Single Source Registry & Loader
 
 Usage:
-    from prompts import build_prompt
+    from prompts import build_prompt, sanitize_hashtags
 
     # FB example
     system, user = build_prompt(
         platform="facebook",
         style="viral_santai",
         length="pendek",
-        raw=master_article
+        raw=master_article,
+        seed=draft_counter
     )
 
     # Threads example
@@ -17,7 +18,8 @@ Usage:
         platform="threads",
         count="8",
         style="genz",
-        raw=master_article
+        raw=master_article,
+        seed=draft_counter
     )
 """
 
@@ -26,6 +28,7 @@ from prompts.platforms.threads import build_threads_prompt, THREAD_COUNTS, THREA
 from prompts.platforms.x import build_x_prompt
 from prompts.platforms.lemon8 import build_lemon8_prompt
 from prompts.modifiers.length import enforce_fb_length_limits, get_length_instruction
+from prompts.shared.hashtags import get_hashtags, sanitize_hashtags, SAKLUMA_HASHTAGS, SAKLUMA_POOL
 
 SUPPORTED_PLATFORMS = ["facebook", "fb", "threads", "x", "twitter", "lemon8"]
 
@@ -36,9 +39,10 @@ def build_prompt(
     length: str = "panjang",
     count: str | int = "5",
     show_title: bool = False,
-    raw_content: str = ""
+    raw_content: str = "",
+    seed=None
 ) -> tuple[str, str]:
-    """Bina prompt (system_prompt, user_prompt) mengikut platform, style, length, dan count.
+    """Bina prompt (system_prompt, user_prompt) mengikut platform, style, length, count, dan rotation seed.
     
     Raises:
         KeyError: Jika platform, style, length, atau count tidak wujud dalam registry.
@@ -48,21 +52,21 @@ def build_prompt(
 
     if plat in ["facebook", "fb"]:
         st = style or "viral_santai"
-        return build_facebook_prompt(style=st, raw_content=master_article, length=length, show_title=show_title)
+        return build_facebook_prompt(style=st, raw_content=master_article, length=length, show_title=show_title, seed=seed)
     
     elif plat == "threads":
         st = style or "genz"
         ct = str(count) if count else "5"
-        return build_threads_prompt(style=st, count=ct, raw_content=master_article)
+        return build_threads_prompt(style=st, count=ct, raw_content=master_article, seed=seed)
     
     elif plat in ["x", "twitter"]:
         st = style or "genz"
         ct = str(count) if count else "1"
-        return build_x_prompt(style=st, count=ct, raw_content=master_article)
+        return build_x_prompt(style=st, count=ct, raw_content=master_article, seed=seed)
     
     elif plat == "lemon8":
         st = style or "estetik"
-        return build_lemon8_prompt(style=st, raw_content=master_article)
+        return build_lemon8_prompt(style=st, raw_content=master_article, seed=seed)
     
     else:
         valid = ", ".join(f"'{p}'" for p in ["facebook", "threads", "x", "lemon8"])
@@ -72,7 +76,11 @@ __all__ = [
     "build_prompt",
     "enforce_fb_length_limits",
     "get_length_instruction",
+    "get_hashtags",
+    "sanitize_hashtags",
     "FB_PERSONAS",
     "THREAD_COUNTS",
-    "THREADS_STYLES"
+    "THREADS_STYLES",
+    "SAKLUMA_HASHTAGS",
+    "SAKLUMA_POOL"
 ]

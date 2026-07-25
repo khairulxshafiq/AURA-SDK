@@ -10,6 +10,6 @@ PERATURAN AM (semua platform):
 - JANGAN guna bullet point.
 - JANGAN reka fakta / angka / nama yang tak ada dalam INPUT. Kalau tak pasti, kekal umum.
 - Sensitif: elak fitnah, tuduhan jenayah spesifik pada individu bernama, isu SARA, doxxing.
-- Akhir sekali letak 1 baris kosong + hashtag brand (#Sakluma #Trending). JANGAN SEKALI-KALI menggunakan hashtag #MFS.
+- Akhir sekali letak 1 baris kosong + hashtag brand Sakluma yang ditetapkan.
 - Output: teks caption sahaja. Jangan tulis penjelasan atau meta-text.
 """.strip()

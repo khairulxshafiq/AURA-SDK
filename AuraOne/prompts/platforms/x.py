@@ -4,6 +4,7 @@ Contains X specific styles and prompt generation functions.
 """
 
 from prompts.shared.global_rules import GLOBAL_RULES
+from prompts.shared.hashtags import get_hashtags
 from prompts.platforms.threads import THREAD_COUNTS, THREADS_STYLES
 
 X_GLOBAL = f"""
@@ -18,7 +19,7 @@ PERATURAN AM (X / Twitter):
 """
 
 
-def build_x_prompt(style: str, count: str | int, raw_content: str) -> tuple[str, str]:
+def build_x_prompt(style: str, count: str | int, raw_content: str, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk X (Twitter).
     Raises KeyError jika style atau count tidak wujud.
     """
@@ -34,6 +35,7 @@ def build_x_prompt(style: str, count: str | int, raw_content: str) -> tuple[str,
 
     c = THREAD_COUNTS[ck]
     s = THREADS_STYLES[sk]
+    tags = get_hashtags("x", count=2, seed=seed)
 
     system_prompt = f"""Kau ialah copywriter X (Twitter) profesional.
 {s['guide']}
@@ -46,6 +48,7 @@ def build_x_prompt(style: str, count: str | int, raw_content: str) -> tuple[str,
 {raw_content}
 
 Hasilkan hantaran X ({c['label']}) dalam gaya "{s['label']}".
-Jika lebih daripada 1 bebenang, pisahkan dengan "---"."""
+Jika lebih daripada 1 bebenang, pisahkan dengan "---".
+Akhiri post dengan hashtag ini di bahagian hujung: {tags}."""
 
     return system_prompt, user_prompt

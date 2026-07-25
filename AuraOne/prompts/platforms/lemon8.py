@@ -4,6 +4,7 @@ Contains Lemon8 style prompts and layout structure.
 """
 
 from prompts.shared.global_rules import GLOBAL_RULES
+from prompts.shared.hashtags import get_hashtags
 
 LEMON8_GLOBAL = f"""
 PERATURAN AM (Lemon8):
@@ -14,8 +15,10 @@ PERATURAN AM (Lemon8):
 """
 
 
-def build_lemon8_prompt(style: str, raw_content: str) -> tuple[str, str]:
+def build_lemon8_prompt(style: str, raw_content: str, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk Lemon8."""
+    tags = get_hashtags("lemon8", count=2, seed=seed)
+
     system_prompt = f"""Kau ialah pencipta kandungan Lemon8 profesional.
 TUGAS: Olah INPUT menjadi hantaran Lemon8 yang estetik, informatif, dan mesra pembaca.
 
@@ -24,6 +27,7 @@ TUGAS: Olah INPUT menjadi hantaran Lemon8 yang estetik, informatif, dan mesra pe
     user_prompt = f"""INPUT / BAHAN MENTAH:
 {raw_content}
 
-Hasilkan hantaran Lemon8 berasaskan bahan di atas."""
+Hasilkan hantaran Lemon8 berasaskan bahan di atas.
+Akhiri post dengan 1 baris kosong dan hashtag ini: {tags}."""
 
     return system_prompt, user_prompt
