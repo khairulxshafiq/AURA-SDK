@@ -1,11 +1,15 @@
+"""
+AURA Telegram UI Handler & Supervisor Orchestrator Router.
+Slim modular routing shell that delegates pipeline execution to modular pipeline modules in AuraOne/pipelines/.
+"""
 import os
 import re
 import json
 import logging
-import datetime
 import asyncio
 import httpx
-from typing import Optional
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -13,7 +17,7 @@ from telegram.ext import (
 )
 
 from config import (
-    GEMINI_KEYS, OPENROUTER_API_KEY, OPENROUTER_FALLBACK_MODEL,
+    OPENROUTER_API_KEY, OPENROUTER_FALLBACK_MODEL,
     SESSION_MAP_PATH, SESSIONS_DIR
 )
 import storage.memory_repository as memory
@@ -21,25 +25,26 @@ import storage.location_repository as location_repo
 import storage.draft_repository as draft_repo
 
 from tools.web_scraper import scrape_url
-from tools.search_engine import fetch_gnews_articles, search_web, fetch_live_news_with_fallback
-from tools.location_service import (
-    reverse_geocode_location, _get_weather_forecast, _get_extended_weather_forecast
-)
-from tools.publisher_service import (
-    save_draft_to_airtable, save_thread_posts_to_airtable, _prepare_drive_image_for_airtable
-)
 from ui.keyboards import (
     _get_platform_keyboard, _get_sub_options_keyboard, _get_gnews_keyboard,
     _get_viral_confessions_keyboard, _get_location_keyboard
 )
-from ui.formatters import (
-    _clean_response, _send_safe_message, _send_telegram_msg, _process_response_draft
+from ui.formatters import _clean_response, _send_telegram_msg
+
+# Import Pipeline Modules
+from pipelines.llm_caller import call_supervisor_chat_model, audit_gemini_keys_async
+from pipelines.scrape_pipeline import execute_scrape_pipeline, handle_scrape_shortcut
+from pipelines.news_pipeline import send_gnews_trending, send_viral_confessions
+from pipelines.draft_pipeline import (
+    generate_all_platform_drafts, confirm_platform_push, handle_confirm_command
 )
+from pipelines.trade_pipeline import handle_stock_command, handle_screener_command
+from pipelines.location_pipeline import handle_location, handle_sethome, handle_sethq
 
 logger = logging.getLogger("aura.ui.telegram_bot")
 
-import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# ─── OpenRouter Proxy ─────────────────────────────────────────────────────────
 
 class OpenRouterProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self):
@@ -82,6 +87,7 @@ class OpenRouterProxyHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         logger.info(f"[OpenRouter Proxy] {format % args}")
 
+
 def _start_openrouter_proxy(port: int = 18080):
     """Start local OpenRouter reverse proxy in a background daemon thread."""
     server = HTTPServer(('127.0.0.1', port), OpenRouterProxyHandler)
@@ -90,8 +96,11 @@ def _start_openrouter_proxy(port: int = 18080):
     logger.info(f"OpenRouter reverse proxy server started on port {port}.")
     return server
 
+
 DEBUG_USERS: dict = {}
-current_key_idx = 0
+
+
+# ─── Session Helpers ──────────────────────────────────────────────────────────
 
 def _load_session_map() -> dict:
     if os.path.exists(SESSION_MAP_PATH):
@@ -102,12 +111,14 @@ def _load_session_map() -> dict:
             return {}
     return {}
 
+
 def _save_session_map(session_map: dict) -> None:
     try:
         with open(SESSION_MAP_PATH, "w") as f:
             json.dump(session_map, f)
     except OSError as e:
         logger.error(f"Failed to save session map: {e}")
+
 
 def _get_conv_id_for_user(user_id: int, prefix: str = "") -> str | None:
     session_map = _load_session_map()
@@ -121,12 +132,14 @@ def _get_conv_id_for_user(user_id: int, prefix: str = "") -> str | None:
         logger.warning(f"Session data missing for user {user_id} ({prefix}), starting fresh.")
     return None
 
+
 def _register_conv_id_for_user(user_id: int, conv_id: str, prefix: str = "") -> None:
     session_map = _load_session_map()
     session_map[f"{prefix}{user_id}"] = conv_id
     _save_session_map(session_map)
 
-# ─── Commands ─────────────────────────────────────────────────────────────────
+
+# ─── Basic Commands ───────────────────────────────────────────────────────────
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -134,6 +147,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rf"Salam {user.mention_html()}! Saya <b>AURA</b>, personal AI supervisor anda. "
         rf"Hantar sebarang mesej, arahan, atau pautan untuk saya bantu!"
     )
+
 
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Toggle debug mode: /debug on | /debug off"""
@@ -163,576 +177,8 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-async def sethome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    loc = location_repo.get_user_location(user_id)
-    if not loc:
-        await update.message.reply_text("⚠️ Sila hantar lokasi (location pin) anda di Telegram terlebih dahulu sebelum menanda tempat Rumah.")
-        return
-    location_repo.save_user_place(user_id, "home", loc["latitude"], loc["longitude"], loc["address"])
-    await update.message.reply_text(
-        f"🏠 *LOKASI RUMAH BERJAYA DISIMPAN!*\n"
-        f"───────────────\n\n"
-        f"• *Alamat*: `{loc['address']}`\n"
-        f"• *Koordinat*: `{loc['latitude']}, {loc['longitude']}`\n\n"
-        f"Kini setiap kali anda menghantar lokasi di Telegram, butang *[🏠 Navigasi Ke Rumah]* akan dipaparkan secara automatik!",
-        parse_mode="Markdown"
-    )
 
-async def sethq_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    loc = location_repo.get_user_location(user_id)
-    if not loc:
-        await update.message.reply_text("⚠️ Sila hantar lokasi (location pin) anda di Telegram terlebih dahulu sebelum menanda HQ Sakluma.")
-        return
-    location_repo.save_user_place(user_id, "hq", loc["latitude"], loc["longitude"], loc["address"])
-    await update.message.reply_text(
-        f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n"
-        f"───────────────\n\n"
-        f"• *Alamat*: `{loc['address']}`\n"
-        f"• *Koordinat*: `{loc['latitude']}, {loc['longitude']}`\n\n"
-        f"Kini setiap kali anda menghantar lokasi di Telegram, butang *[🏢 Navigasi Ke HQ]* akan dipaparkan secara automatik!",
-        parse_mode="Markdown"
-    )
-
-async def _execute_direct_scrape_pipeline(url: str, user_id: int, chat_id: int, context, update):
-    """Direct Execution Pipeline for URL Scraping -> Master Article Generation -> UI Keyboards.
-    Bypasses SDK async subagent loop to avoid intermediate metadata JSON output."""
-    global current_key_idx
-    logger.info(f"[DirectPipeline] Executing direct scrape pipeline for {url} (user {user_id})...")
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
-    # 1. Direct Web Scraping using 3-Tier Scraper (Firecrawl -> Native -> Jina)
-    scraped = scrape_url(url)
-    if not isinstance(scraped, dict) or scraped.get("status") != "success":
-        err_msg = scraped.get("error", "Gagal mengekstrak kandungan laman web.") if isinstance(scraped, dict) else "Scrape failed"
-        await update.message.reply_text(f"⚠️ *Gagal mengekstrak URL*: {err_msg}", parse_mode="Markdown")
-        return
-
-    raw_title = scraped.get("title", "Artikel Berita")
-    image_url = scraped.get("article_image_url", "") or scraped.get("image_url", "")
-    if image_url and image_url.startswith("http://"):
-        image_url = "https://" + image_url[7:]
-    source_url = scraped.get("url", url)
-
-    if not raw_content or len(raw_content) < 50:
-        await update.message.reply_text("⚠️ Artikel yang di-scrape tidak mengandungi teks kandungan yang mencukupi.")
-        return
-
-    # 2. Direct Master Article Generation Prompt (Neutral Core Context & Story Hub)
-    prompt = (
-        f"Anda adalah Editor Konten & Analyst Sakluma profesional.\n"
-        f"Tugas anda: Tulis kandungan Master Article penuh dalam format Ringkasan Fakta Neutral & Cerita Penuh Artikel (Neutral Core Context & Story Hub) berdasarkan kandungan artikel berikut.\n\n"
-        f"SYARAT & STRUKTUR MASTER ARTICLE:\n"
-        f"1. Format Neutral & Tanpa Gaya Bahasa (Style-Free): DILARANG menggunakan gaya perbualan ('Adakah anda...', 'Sinar Harian baru-baru ini...'), DILARANG meletakkan Hashtag atau CTA dalam Master Article, DILARANG membuat muqaddimah karangan blog.\n"
-        f"2. Struktur Wajib:\n"
-        f"   📌 TAJUK ASAL / FOKUS UTAMA: Tajuk ringkas isu\n"
-        f"   📝 RINGKASAN ISU / RINGKASAN CERITA: Cerita penuh secara kronologi/sebab-akibat tentang apa yang berlaku\n"
-        f"   📊 FAKTA & POIN PENTING: Senarai bullet points data, angka, atau kenyataan penting\n"
-        f"   💡 SUDUT PANDANG KUNCI: Intipati utama artikel yang boleh dijadikan bahan perbincangan\n\n"
-        f"TAJUK ASAL: {raw_title}\n"
-        f"URL ASAL: {source_url}\n\n"
-        f"KANDUNGAN ARTIKEL:\n{raw_content[:4000]}\n\n"
-        f"Sila tulis kandungan Master Article neutral secara lengkap dan terperinci. Di bahagian AKHIR jawapan anda, MESTI sertakan tag metadata [DRAFT_*] mengikut format berikut:\n\n"
-        f"[DRAFT_TITLE: {raw_title}]\n"
-        f"[DRAFT_SOURCE_URL: {source_url}]\n"
-        f"[DRAFT_IMAGE: {image_url}]\n"
-        f"[DRAFT_HASHTAGS: #Sakluma #Trending #IsuSemasa]"
-    )
-
-    # 3. Call LLM directly (Gemini or OpenRouter Fallback)
-    generated_text = ""
-    num_keys = len(GEMINI_KEYS)
-    for attempt in range(num_keys):
-        active_key = GEMINI_KEYS[current_key_idx]
-        if memory.is_key_on_cooldown(active_key):
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-        try:
-            from google import genai
-            client = genai.Client(api_key=active_key)
-            res = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-            if res and res.text:
-                generated_text = res.text
-                break
-        except Exception as err:
-            logger.warning(f"Direct pipeline Gemini key #{current_key_idx + 1} failed ({err})")
-            if "429" in str(err) or "quota" in str(err).lower():
-                memory.set_key_cooldown(active_key, 600.0)
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-
-    if not generated_text and OPENROUTER_API_KEY:
-        try:
-            logger.info("Direct pipeline: falling back to OpenRouter for Master Article generation...")
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": OPENROUTER_FALLBACK_MODEL,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-                if r.status_code == 200:
-                    data = r.json()
-                    generated_text = data["choices"][0]["message"]["content"]
-        except Exception as e:
-            logger.error(f"Direct pipeline OpenRouter fallback error: {e}")
-
-    if not generated_text:
-        generated_text = (
-            f"📰 *{raw_title}*\n\n{raw_content[:800]}...\n\n"
-            f"[DRAFT_TITLE: {raw_title}]\n"
-            f"[DRAFT_SOURCE_URL: {source_url}]\n"
-            f"[DRAFT_IMAGE: {image_url}]\n"
-            f"[DRAFT_HASHTAGS: #Sakluma #Berita]\n"
-            f"[DRAFT_MASTER_ARTICLE: {raw_content[:1500]}]"
-        )
-
-    # 4. Process draft tags, save to SQLite DB, send Photo Preview & Inline Keyboards
-    res = await _process_response_draft(user_id, chat_id, generated_text, context, update)
-    if res == "[DRAFT_SENT_WITH_KEYBOARD]":
-        return
-    clean = _clean_response(generated_text)
-    await _send_telegram_msg(update, clean, parse_mode="Markdown")
-
-async def scrape_shortcut_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
-    try:
-        idx = int(text.replace("/s", ""))
-    except ValueError:
-        return
-
-    urls = context.user_data.get("scrape_urls", {})
-    if idx in urls:
-        url = urls[idx]
-        await update.message.reply_text(f"⚡ *Memproses Artikel {idx}...*\n_{url}_", parse_mode="Markdown", disable_web_page_preview=True)
-        await _execute_direct_scrape_pipeline(url, update.effective_user.id, update.effective_chat.id, context, update)
-    else:
-        await update.message.reply_text("⚠️ URL tidak dijumpai dalam memori sesi. Sila minta senarai berita baru.")
-
-# ─── News Handlers ────────────────────────────────────────────────────────────
-
-async def send_viral_confessions(update: Update, context: ContextTypes.DEFAULT_TYPE, offset: int = 0):
-    queries = [
-        "viral confession luahan rumah tangga curang Malaysia 2026",
-        "IIUM Confessions luahan rumah tangga skandal 2026",
-        "Reddit Bolehland Malaysia luahan isteri suami curang 2026",
-        "Lowyat Kopitiam luahan confession rumah tangga viral 2026"
-    ]
-
-    q = queries[(offset // 6) % len(queries)]
-    search_res = search_web(q)
-
-    results = search_res.get("results", []) if isinstance(search_res, dict) else []
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-
-    articles = []
-    if results:
-        for item in results:
-            link = item.get("link", "").strip()
-            if "facebook.com" in link.lower() or "fb.com" in link.lower():
-                continue
-
-            title = item.get("title", "Luahan Sensasi").strip()
-            snippet = item.get("snippet", "").strip()
-            snippet = re.sub(r"\s+", " ", snippet)
-            if len(snippet) > 130:
-                snippet = snippet[:127] + "..."
-            if not snippet:
-                snippet = "Kisah luahan sensasi masyarakat & netizen Malaysia."
-
-            source_name = "Portal Luahan"
-            if "iiumc" in link.lower():
-                source_name = "IIUM Confessions"
-            elif "reddit.com" in link.lower():
-                source_name = "Reddit Malaysia"
-            elif "lowyat" in link.lower():
-                source_name = "Lowyat Forum"
-
-            articles.append({
-                "title": title,
-                "source": source_name,
-                "link": link,
-                "desc": snippet
-            })
-            if len(articles) >= 6:
-                break
-
-    if len(articles) < 6:
-        gnews_items = fetch_gnews_articles("confession luahan rumah tangga viral Malaysia 2026", max_items=10)
-        for g in gnews_items:
-            if not any(a["link"] == g["link"] for a in articles):
-                articles.append(g)
-            if len(articles) >= 6:
-                break
-
-    if "scrape_urls" not in context.user_data:
-        context.user_data["scrape_urls"] = {}
-
-    import html as _h
-    lines = []
-    for idx, a in enumerate(articles, start=offset + 1):
-        t = _h.escape(a.get('title', 'Luahan Sensasi'))
-        s = _h.escape(a['source']) if a.get('source') else ""
-        d = _h.escape(a.get('desc', ''))
-        lnk = a.get('link', '')
-        source_str = f" • Sumber: {s}\n" if s else ""
-        context.user_data["scrape_urls"][idx] = lnk
-        lines.append(
-            f"<b>{idx}. {t}</b>\n"
-            f"{source_str}"
-            f"   • <i>{d}</i>\n"
-            f"   👉 <a href=\"{lnk}\">Baca Sini</a> | 🔄 /s{idx}"
-        )
-
-    body = "\n\n".join(lines)
-    reply = (
-        f"🔥 <b>VIRAL &amp; CONFESSION SENSASI [{today_str}]</b>\n"
-        f"───────────────\n"
-        f"📌 <b>Koleksi</b>: <code>Reddit (r/Bolehland, r/malaysia), IIUMC &amp; Lowyat Forum</code>\n\n"
-        f"{body}\n\n"
-        f"───────────────\n"
-        f"💡 <b>Tekan [More Confessions] untuk 6 cerita seterusnya, atau [Back] untuk ke menu utama:</b> "
-    )
-
-    reply_markup = _get_viral_confessions_keyboard(offset)
-    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML", disable_preview=True)
-
-async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str = "trending", max_items: int = 6):
-    cat_queries = {
-        "trending": ("Malaysia trending viral 2026", "VIRAL & TRENDING"),
-        "gajet": ("gajet teknologi telefon pintar Malaysia 2026", "GAJET & TEKNOLOGI"),
-        "korporat": ("korporat ekonomi perniagaan saham Malaysia 2026", "KORPORAT & EKONOMI"),
-        "artis": ("artis hiburan selebriti drama Malaysia 2026", "ARTIS & HIBURAN"),
-        "sukan": ("sukan bola sepak badminton harimau malaya 2026", "SUKAN MALAYSIA"),
-        "viral": ("viral panas isu sensasi luahan confession Malaysia 2026", "VIRAL & CONFESSION"),
-        "nasional": ("isu semasa nasional kerajaan politik Malaysia 2026", "ISU SEMASA NASIONAL")
-    }
-
-    q, cat_title = cat_queries.get(category, (f"{category} Malaysia 2026", category.upper()))
-    articles, source_tier = fetch_live_news_with_fallback(q, max_items)
-    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
-
-    if not articles:
-        reply_text = f"⚠️ Tiada berita terkini dijumpai untuk kategori ini dari carian terus."
-        await update.message.reply_text(reply_text, parse_mode=None, reply_markup=_get_gnews_keyboard())
-        return
-
-    if "scrape_urls" not in context.user_data:
-        context.user_data["scrape_urls"] = {}
-
-    import html as _h
-    lines = []
-    for idx, a in enumerate(articles, start=1):
-        t = _h.escape(a['title'])
-        s = _h.escape(a['source']) if a['source'] else ""
-        d = _h.escape(a['desc'])
-        lnk = a['link']
-        source_str = f" • Sumber: {s}\n" if s else ""
-        context.user_data["scrape_urls"][idx] = lnk
-        lines.append(
-            f"<b>{idx}. {t}</b>\n"
-            f"{source_str}"
-            f"   • <i>{d}</i>\n"
-            f"   👉 <a href=\"{lnk}\">Baca Sini</a> | 🔄 /s{idx}"
-        )
-
-    body = "\n\n".join(lines)
-    cat_title_esc = _h.escape(cat_title)
-
-    reply = (
-        f"🔥 <b>{cat_title_esc} [{today_str}]</b>\n"
-        f"───────────────\n\n"
-        f"{body}\n\n"
-        f"───────────────\n"
-        f"💡 <b>Pilih Kategori Berita Tambahan (Tekan Butang Di Bawah)</b>:"
-    )
-
-    reply_markup = _get_gnews_keyboard()
-    await _send_telegram_msg(update, reply, reply_markup=reply_markup, parse_mode="HTML", disable_preview=True)
-
-# ─── Location Handler ─────────────────────────────────────────────────────────
-
-async def handle_location(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    message = update.message or update.edited_message
-    if not message or not message.location:
-        return
-
-    lat = message.location.latitude
-    lon = message.location.longitude
-
-    address = await reverse_geocode_location(lat, lon)
-    location_repo.save_user_location(user_id, lat, lon, address)
-
-    if update.edited_message:
-        logger.info(f"Quietly updated live location in database: {address}")
-        return
-
-    maps_url = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
-    weather_info = await _get_weather_forecast(lat, lon)
-    reply_markup = _get_location_keyboard(user_id, lat, lon)
-
-    reply_text = (
-        f"📍 *LOCATION UPDATE;*\n"
-        f"───────────────\n\n"
-        f"🏢 *Alamat Semasa*:\n`{address}`\n\n"
-        f"📌 *Koordinat GPS*:\n`{lat}, {lon}`\n\n"
-        f"🌤️ *Ramalan Cuaca Hari Ini*:\n{weather_info}\n\n"
-        f"🗺️ *Pautan Peta*:\n[Buka Dalam Google Maps]({maps_url})\n\n"
-        f"───────────────\n"
-        f"💡 *Pilihan Pantas (Tekan butang di bawah)*:"
-    )
-
-    import html
-    escaped = html.escape(reply_text)
-    escaped = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", escaped)
-    escaped = re.sub(r"\*(.*?)\*", r"<b>\1</b>", escaped)
-    escaped = re.sub(r"`(.*?)`", r"<code>\1</code>", escaped)
-    escaped = re.sub(r"\[(.*?)\]\((https?://.*?)\)", r'<a href="\2">\1</a>', escaped)
-
-    thread_id = getattr(update.message, "message_thread_id", None) if update.message else None
-    await update.message.reply_text(escaped, parse_mode="HTML", reply_markup=reply_markup, message_thread_id=thread_id)
-
-def _clean_platform_draft_output(text: str) -> str:
-    """Post-process and clean platform draft text output to guarantee 100% pure caption content."""
-    if not text:
-        return ""
-
-    from prompts import sanitize_hashtags
-
-    # 1. Remove visual/GIF recommendations
-    cleaned = re.sub(r"\[?(?:Gambar|Media|Visual|Cadangan GIF|GIF):\s*.*?\]?", "", text, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\((?:Gambar|Media|Visual|Cadangan GIF|GIF):\s*.*?\)", "", cleaned, flags=re.IGNORECASE)
-
-    # 2. Remove structural header labels & conversational intro lines line-by-line
-    lines = []
-    for line in cleaned.split("\n"):
-        line_strip = line.strip()
-        # Skip intro conversational fluff lines
-        if re.match(r"^(?:Baiklah|Tentu|Berikut|Ini|Semoga|Cadangan|Kapsyen)\b.*", line_strip, re.IGNORECASE) and len(line_strip) < 70 and ("draf" in line_strip.lower() or "hantaran" in line_strip.lower() or "berikut" in line_strip.lower() or "sakluma" in line_strip.lower()):
-            continue
-        # Strip structural prefixes
-        line_clean = re.sub(r"^(?:FACEBOOK POST|FB POST|THREADS POST|X POST|TWITTER POST|LEMON8 POST|KAPSYEN|TAJUK|TITLE|POST):\s*", "", line, flags=re.IGNORECASE)
-        lines.append(line_clean)
-
-    cleaned_text = "\n".join(lines).strip()
-    return sanitize_hashtags(cleaned_text)
-
-# ─── Draft Generation & Confirmation Helpers ─────────────────────────────────
-
-async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0, fb_len: str = "panjang", fb_show_title: bool = False, tx_style: str = "genz") -> str:
-    global current_key_idx
-    from prompts import build_prompt, enforce_fb_length_limits
-
-    plat_lower = plat.lower()
-    seed_val = draft.get("counter_val", 0)
-    try:
-        if plat_lower in ["facebook", "fb"] or (fb_style and plat_lower not in ["threads", "x", "twitter"]):
-            style_key = fb_style or "viral_santai"
-            sys_p, usr_p = build_prompt(
-                platform="facebook",
-                style=style_key,
-                length=fb_len,
-                show_title=fb_show_title,
-                raw=draft.get("master_article", ""),
-                seed=seed_val
-            )
-            prompt = f"{sys_p}\n\n{usr_p}"
-        elif plat_lower == "threads":
-            count_key = str(thread_length) if thread_length in [1, 3, 5, 8] else "5"
-            style_key = tx_style or "genz"
-            sys_p, usr_p = build_prompt(
-                platform="threads",
-                style=style_key,
-                count=count_key,
-                raw=draft.get("master_article", ""),
-                seed=seed_val
-            )
-            prompt = f"{sys_p}\n\n{usr_p}"
-        elif plat_lower in ["x", "twitter"]:
-            count_key = str(thread_length) if thread_length in [1, 3, 5, 8] else "1"
-            style_key = tx_style or "genz"
-            sys_p, usr_p = build_prompt(
-                platform="x",
-                style=style_key,
-                count=count_key,
-                raw=draft.get("master_article", ""),
-                seed=seed_val
-            )
-            prompt = f"{sys_p}\n\n{usr_p}"
-        else:
-            sys_p, usr_p = build_prompt(
-                platform=plat_lower,
-                style=fb_style or "estetik",
-                raw=draft.get("master_article", ""),
-                seed=seed_val
-            )
-            prompt = f"{sys_p}\n\n{usr_p}"
-    except KeyError as k_err:
-        logger.error(f"Prompt registry KeyError for platform {plat}: {k_err}")
-        raise k_err
-
-    def _sync_gemini_call(api_key: str) -> str:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-        return response.text if response and response.text else ""
-
-    num_keys = len(GEMINI_KEYS)
-    for attempt in range(num_keys):
-        active_key = GEMINI_KEYS[current_key_idx]
-        if memory.is_key_on_cooldown(active_key):
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-
-        os.environ["GEMINI_API_KEY"] = active_key
-        try:
-            text = await asyncio.wait_for(asyncio.to_thread(_sync_gemini_call, active_key), timeout=10.0)
-            if text:
-                cleaned = _clean_platform_draft_output(text)
-                if plat_lower in ["facebook", "fb"]:
-                    cleaned = enforce_fb_length_limits(cleaned, fb_len=fb_len, show_title=fb_show_title)
-                return cleaned
-        except asyncio.TimeoutError:
-            logger.warning(f"Gemini key #{current_key_idx + 1} draft gen timed out after 10s, placing on cooldown...")
-            memory.set_key_cooldown(active_key, 600.0)
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-        except Exception as err:
-            logger.warning(f"Gemini key #{current_key_idx + 1} draft gen failed ({err})")
-            if "429" in str(err) or "quota" in str(err).lower():
-                memory.set_key_cooldown(active_key, 600.0)
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-
-    # OpenRouter Fallback
-    if OPENROUTER_API_KEY:
-        try:
-            logger.info(f"Generating draft for {plat.upper()} using OpenRouter fallback ({OPENROUTER_FALLBACK_MODEL})...")
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": OPENROUTER_FALLBACK_MODEL,
-                "messages": [{"role": "user", "content": prompt}]
-            }
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-                if r.status_code == 200:
-                    data = r.json()
-                    content = data["choices"][0]["message"]["content"]
-                    cleaned = _clean_platform_draft_output(content)
-                    if plat_lower in ["facebook", "fb"]:
-                        cleaned = enforce_fb_length_limits(cleaned, fb_len=fb_len, show_title=fb_show_title)
-                    return cleaned
-                else:
-                    logger.error(f"OpenRouter draft gen error ({r.status_code}): {r.text[:200]}")
-        except Exception as or_err:
-            logger.error(f"OpenRouter draft gen exception: {or_err}")
-
-    # Fallback to master article text if all model calls fail/timeout
-    style_label = f" ({fb_style})" if fb_style else ""
-    fallback_txt = _clean_platform_draft_output(f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}")
-    if plat_lower in ["facebook", "fb"]:
-        fallback_txt = enforce_fb_length_limits(fallback_txt, fb_len=fb_len, show_title=fb_show_title)
-    return fallback_txt
-
-async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
-    generated_drafts = {}
-    for plat in selected_platforms:
-        fb_style = options.get("facebook", "viral_santai")
-        fb_len = options.get("fb_len", "panjang")
-        fb_show_title = options.get("fb_show_title", False)
-        tx_style = options.get("tx_style", "genz")
-        thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
-        try:
-            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style), timeout=15.0)
-        except Exception as err:
-            logger.error(f"Draft generation timeout/error for {plat}: {err}")
-            style_label = f" ({fb_style})" if fb_style else ""
-            draft_text = f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
-        
-        if not draft_text:
-            draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
-
-        draft_text = _clean_platform_draft_output(draft_text)
-        generated_drafts[plat] = draft_text
-
-    draft_repo.update_platform_draft(user_id, ",".join(selected_platforms), json.dumps(generated_drafts), state="")
-
-    review_text = "✨ *DRAF MEDIA SOSIAL YANG DIJANA* ✨\n\n"
-    keyboard = []
-    for plat, text in generated_drafts.items():
-        review_text += f"📱 *{plat.upper()}*:\n{text}\n\n"
-        keyboard.append([InlineKeyboardButton(f"Confirm & Push {plat.upper()} ✅", callback_data=f"confirm_platform:{plat}")])
-
-    review_text += "Sila klik butang di bawah untuk muat naik ke Google Drive & tolak ke Airtable."
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await message.reply_text(review_text, parse_mode="Markdown", reply_markup=reply_markup)
-
-async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
-    draft = draft_repo.get_draft(user_id)
-    if not draft:
-        await update.message.reply_text("⚠️ Tiada draf aktif dijumpai.")
-        return
-
-    title = draft["title"]
-    hashtags = draft["hashtags"]
-    image_url = draft["image_url"]
-    source_url = draft["source_url"]
-    selected_platform = draft["selected_platform"]
-    platform_draft = draft["platform_draft"]
-
-    if not selected_platform or not platform_draft:
-        await update.message.reply_text("⚠️ Sila pilih platform draf terlebih dahulu.")
-        return
-
-    telegram_file_id = draft.get("telegram_file_id", "")
-    counter = draft.get("counter_val", 0)
-    final_image_url = await _prepare_drive_image_for_airtable(image_url, telegram_file_id, counter, context)
-
-    specific_draft = platform_draft
-    try:
-        draft_dict = json.loads(platform_draft)
-        if isinstance(draft_dict, dict):
-            specific_draft = draft_dict.get(selected_platform, platform_draft)
-    except Exception:
-        pass
-
-    res = save_draft_to_airtable(
-        title=title,
-        caption=specific_draft,
-        platform=selected_platform,
-        source_url=source_url,
-        image_url=final_image_url,
-        status="Draft",
-        hashtags=hashtags
-    )
-
-    if res["status"] == "success":
-        draft_repo.clear_draft(user_id)
-        reply_msg = (
-            f"✅ *Draf Hantaran {selected_platform.upper()} Berjaya Disahkan!*\n\n"
-            f"• *Tajuk*: {title}\n"
-            f"• *Platform*: {selected_platform.upper()}\n"
-            f"• *Airtable Record*: Berjaya disimpan [Content Station]\n\n"
-            f"Sedia untuk fasa posting!"
-        )
-        await _send_telegram_msg(update, reply_msg, parse_mode="Markdown")
-    else:
-        await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
-
-# ─── Callback Query Handler ────────────────────────────────────────────────────
+# ─── Callback Router ──────────────────────────────────────────────────────────
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -780,16 +226,16 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         target_url = data.split("do_scrape:", 1)[1]
         await query.answer("🚀 Mula scrape artikel...")
         await query.message.reply_text(f"⚡ Mula scrape & olah kandungan daripada:\n`{target_url}`", parse_mode="Markdown")
-        await _execute_direct_scrape_pipeline(target_url, user_id, chat_id, context, update)
+        await execute_scrape_pipeline(target_url, user_id, chat_id, context, update)
         return
 
     if data.startswith("do_summarize:"):
         target_url = data.split("do_summarize:", 1)[1]
         await query.answer("🔍 Meringkaskan artikel...")
         scraped = scrape_url(target_url)
-        content = scraped.get("content", "")
-        title = scraped.get("title", "Artikel")
-        img = scraped.get("article_image_url", "") or scraped.get("image_url", "")
+        content = scraped.get("content", "") if isinstance(scraped, dict) else ""
+        title = scraped.get("title", "Artikel") if isinstance(scraped, dict) else "Artikel"
+        img = scraped.get("article_image_url", "") or scraped.get("image_url", "") if isinstance(scraped, dict) else ""
         if img and img.startswith("http://"):
             img = "https://" + img[7:]
         summary_text = f"📰 *{title}*\n\n{content[:1200]}...\n\n🔗 `{target_url}`"
@@ -847,6 +293,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             draft_repo.update_draft_state(user_id, json.dumps(state_data))
             reply_markup = _get_sub_options_keyboard(state_data)
             await query.message.reply_text("Pilih pilihan sub-platform boss:", reply_markup=reply_markup)
+
     elif data.startswith("sub:"):
         parts = data.split(":")
         if len(parts) >= 2:
@@ -876,136 +323,28 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         state_data["options"] = options
         draft_repo.update_draft_state(user_id, json.dumps(state_data))
 
-        # Always refresh Telegram preview immediately after toggle
         reply_markup = _get_sub_options_keyboard(state_data)
         try:
             await query.edit_message_reply_markup(reply_markup=reply_markup)
         except Exception as e:
             logger.warning(f"Failed to edit reply markup for hashtag toggle: {e}")
 
-        # Regenerate preview immediately if drafts already generated
         selected = state_data.get("selected", [])
         if selected and draft.get("platform_draft"):
             status_text = "🔄 Mengemaskini pratonton (Dengan Hashtag)..." if with_hashtags else "🔄 Mengemaskini pratonton (Tanpa Hashtag)..."
             await query.message.reply_text(status_text)
-            await _generate_all_platform_drafts(user_id, chat_id, selected, options, draft, context, query.message)
+            await generate_all_platform_drafts(user_id, chat_id, selected, options, draft, context, query.message)
 
     elif data == "sub_next":
         selected = state_data.get("selected", [])
         options = state_data.get("options", {})
         await query.message.reply_text("⏳ Menjana semua draf platform terpilih...")
-        await _generate_all_platform_drafts(user_id, chat_id, selected, options, draft, context, query.message)
+        await generate_all_platform_drafts(user_id, chat_id, selected, options, draft, context, query.message)
 
     elif data.startswith("confirm_platform:"):
         plat_to_confirm = data.split(":")[1]
-        try:
-            platform_drafts = json.loads(draft.get("platform_draft") or "{}")
-        except Exception:
-            platform_drafts = {}
+        await confirm_platform_push(user_id, draft, plat_to_confirm, context, query.message)
 
-        specific_draft = platform_drafts.get(plat_to_confirm, "")
-        if not specific_draft:
-            specific_draft = draft.get("master_article", "")
-
-        telegram_direct_cdn_url = await _prepare_drive_image_for_airtable(
-            draft["image_url"], draft.get("telegram_file_id", ""), draft.get("counter_val", 0), context
-        )
-
-        target_airtable_img = telegram_direct_cdn_url or draft.get("image_url", "")
-        if target_airtable_img and target_airtable_img.startswith("http://"):
-            target_airtable_img = "https://" + target_airtable_img[7:]
-
-        res = save_draft_to_airtable(
-            title=draft["title"],
-            caption=specific_draft,
-            platform=plat_to_confirm,
-            source_url=draft["source_url"],
-            image_url=target_airtable_img,
-            status="Draft",
-            hashtags=draft["hashtags"]
-        )
-
-        if res["status"] == "success":
-            draft_repo.clear_draft(user_id)
-            await query.message.reply_text(
-                f"✅ *Draf Hantaran {plat_to_confirm.upper()} Berjaya Disahkan!*\n\n"
-                f"• *Tajuk*: {draft['title']}\n"
-                f"• *Platform*: {plat_to_confirm.upper()}\n"
-                f"• *Telegram Direct CDN*: `{telegram_direct_cdn_url}` 📸\n"
-                f"• *Airtable Record*: Berjaya disimpan [Content Station] 🎉",
-                parse_mode="Markdown"
-            )
-        else:
-            await query.message.reply_text(f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
-
-async def _call_supervisor_chat_model(agent_message: str) -> str:
-    """Direct fast execution for conversational chat with strict 6s timeout and OpenRouter fallback."""
-    global current_key_idx
-    from orchestrator.supervisor import get_supervisor_instructions
-    system_instructions = get_supervisor_instructions()
-
-    prompt = f"{system_instructions}\n\nMESEJ PENGGUNA:\n{agent_message}"
-
-    def _sync_gemini_chat(api_key: str) -> str:
-        from google import genai
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt
-        )
-        return response.text if response and response.text else ""
-
-    num_keys = len(GEMINI_KEYS)
-    for attempt in range(num_keys):
-        active_key = GEMINI_KEYS[current_key_idx]
-        if memory.is_key_on_cooldown(active_key):
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-
-        os.environ["GEMINI_API_KEY"] = active_key
-        try:
-            text = await asyncio.wait_for(asyncio.to_thread(_sync_gemini_chat, active_key), timeout=6.0)
-            if text:
-                return text
-        except asyncio.TimeoutError:
-            logger.warning(f"Gemini key #{current_key_idx + 1} chat timed out after 6s, placing on 10-min cooldown...")
-            memory.set_key_cooldown(active_key, 600.0)
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-        except Exception as err:
-            logger.warning(f"Gemini key #{current_key_idx + 1} chat failed ({err})")
-            if "429" in str(err) or "quota" in str(err).lower():
-                memory.set_key_cooldown(active_key, 600.0)
-            current_key_idx = (current_key_idx + 1) % num_keys
-            continue
-
-    # OpenRouter Proxy Fallback
-    if OPENROUTER_API_KEY:
-        try:
-            logger.info(f"All Gemini keys in cooldown/failed. Using OpenRouter fallback ({OPENROUTER_FALLBACK_MODEL}) for chat...")
-            headers = {
-                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                "Content-Type": "application/json"
-            }
-            payload = {
-                "model": OPENROUTER_FALLBACK_MODEL,
-                "messages": [
-                    {"role": "system", "content": system_instructions},
-                    {"role": "user", "content": agent_message}
-                ]
-            }
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload)
-                if r.status_code == 200:
-                    data = r.json()
-                    content = data["choices"][0]["message"]["content"]
-                    return content
-                else:
-                    logger.error(f"OpenRouter chat error ({r.status_code}): {r.text[:200]}")
-        except Exception as or_err:
-            logger.error(f"OpenRouter chat exception: {or_err}")
-
-    return "Ya, AURA di sini! Ada apa-apa yang saya boleh bantu hari ini? ⚡"
 
 # ─── Intent Router Helpers ───────────────────────────────────────────────────
 
@@ -1017,11 +356,13 @@ def _is_bare_url(text: str) -> bool:
     stripped = URL_RE.sub('', text).strip()
     return len(stripped.split()) <= 3
 
+
 LIVE_SEARCH_KEYWORDS = [
     "berita terkini", "current news", "headline", "trending malaysia",
     "trending dunia", "cerita menarik", "cerita semasa", "apa berlaku hari ini",
     "top stories", "berita", "trending", "viral", "gnews", "/news"
 ]
+
 
 def route_intent(message_text: str) -> str:
     """Determine message intent: SCRAPE_PIPELINE, URL_SUGGEST, CONTEXTUAL_CHAT, LIVE_NEWS_SEARCH, or DAILY_CHAT."""
@@ -1030,29 +371,24 @@ def route_intent(message_text: str) -> str:
     is_s2 = text.lower().startswith('/s2') or bool(re.match(r'^/s\d+', text, re.IGNORECASE))
     has_scrape_word = bool(SCRAPE_TRIGGER_RE.search(text))
 
-    # 1) Direct URL paste or explicit scrape trigger -> SCRAPE_PIPELINE
     if has_url and (is_s2 or has_scrape_word or _is_bare_url(text)):
         return "SCRAPE_PIPELINE"
 
-    # 2) URL + question/chat -> CONTEXTUAL_CHAT
     if has_url and not has_scrape_word:
         return "CONTEXTUAL_CHAT"
 
-    # 3) Mandatory Live Search Router Trigger
     text_clean = text.lower()
     if any(kw in text_clean for kw in LIVE_SEARCH_KEYWORDS):
         return "LIVE_NEWS_SEARCH"
 
-    # 4) Takde URL → chat harian biasa (KEKAL)
     return "DAILY_CHAT"
+
 
 # ─── Message Handler Router ───────────────────────────────────────────────────
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, override_text: str = None):
-    global current_key_idx
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
-    is_debug = DEBUG_USERS.get(user_id, False)
 
     user_message = override_text or update.message.text or ""
     if not user_message and not update.message.photo:
@@ -1062,7 +398,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
     if user_message:
         msg_clean = user_message.strip().lower()
         if msg_clean.startswith("confirm") or msg_clean.startswith("/confirm"):
-            await confirm_command(update, context)
+            await handle_confirm_command(update, context)
             return
 
         intent = route_intent(user_message)
@@ -1071,7 +407,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
         if intent == "SCRAPE_PIPELINE":
             url_match = URL_RE.search(user_message)
             target_url = url_match.group(0) if url_match else user_message
-            await _execute_direct_scrape_pipeline(target_url, user_id, chat_id, context, update)
+            await execute_scrape_pipeline(target_url, user_id, chat_id, context, update)
             return
 
         elif intent == "URL_SUGGEST":
@@ -1099,7 +435,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             url_match = URL_RE.search(user_message)
             target_url = url_match.group(0) if url_match else ""
             await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-            response_text = await _call_supervisor_chat_model(user_message)
+            response_text = await call_supervisor_chat_model(user_message, user_id=user_id)
             clean = _clean_response(response_text)
             if target_url and target_url not in clean:
                 clean += f"\n\n_(Nota: Kalau nak aku jadikan content, taip `Scrape {target_url}` ye.)_"
@@ -1111,137 +447,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    response_text = await _call_supervisor_chat_model(agent_message)
+    response_text = await call_supervisor_chat_model(agent_message, user_id=user_id)
     clean = _clean_response(response_text)
     if clean:
         await _send_telegram_msg(update, clean, parse_mode="Markdown")
 
+
 # ─── Handler Registration ─────────────────────────────────────────────────────
-
-def _audit_gemini_keys_async():
-    """Non-blocking background check of Gemini API keys to seed 429 cooldown state."""
-    def _check():
-        for key in GEMINI_KEYS:
-            if not memory.is_key_on_cooldown(key):
-                try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
-                    r = httpx.post(url, json={"contents": [{"parts": [{"text": "ping"}]}]}, timeout=5)
-                    if r.status_code == 429:
-                        logger.info(f"[KeyAuditor] Gemini key {key[:8]}... returned 429, setting 10-min cooldown.")
-                        memory.set_key_cooldown(key, 600.0)
-                except Exception as e:
-                    logger.warning(f"[KeyAuditor] Key audit ping error for {key[:8]}...: {e}")
-    threading.Thread(target=_check, daemon=True).start()
-
-async def stock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /stock, /trade, /swing, or /position command using AURA-Trade engine."""
-    chat_id = update.effective_chat.id
-    raw_args = " ".join(context.args).strip() if context.args else ""
-    cmd_name = update.message.text.split()[0].replace("/", "").lower() if update.message and update.message.text else "stock"
-    
-    if not raw_args:
-        await _send_telegram_msg(
-            update,
-            "🏷️ *AURA-Trade Bursa Malaysia Co-Pilot*\n\n"
-            "Sila masukkan simbol atau nama syarikat. Contoh:\n"
-            "• `/stock 0181` (atau `/swing Aemulus` untuk Mode Swing)\n"
-            "• `/position 1155` (untuk Mode Position / DCA)\n"
-            "• `/screener swing` (untuk tapis shortlist)",
-            parse_mode="Markdown"
-        )
-        return
-
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-
-    from tools.trading_service import (
-        resolve_symbol, get_live_quote, get_fundamentals,
-        get_news_catalyst, compute_trade_plan
-    )
-
-    resolved_res = resolve_symbol(raw_args)
-    symbol = resolved_res["matches"][0]["symbol"] if resolved_res.get("matches") else raw_args
-
-    quote = await asyncio.to_thread(get_live_quote, symbol)
-    if isinstance(quote, dict) and "error" in quote:
-        await _send_telegram_msg(update, f"⚠️ {quote['error']}", parse_mode="Markdown")
-        return
-
-    fundamentals = await asyncio.to_thread(get_fundamentals, symbol)
-    catalyst = await asyncio.to_thread(get_news_catalyst, symbol, sector=quote.get("sector"))
-    
-    # Calculate deterministic trade plan
-    entry = quote.get("price", 0.0)
-    atr = quote.get("atr14", 0.02)
-    sl = round(max(0.01, entry - (1.5 * atr)), 3)
-    tp1 = round(entry + (1.2 * (entry - sl)), 3)
-    tp2 = round(entry + (2.2 * (entry - sl)), 3)
-    
-    trade_plan = compute_trade_plan(entry=entry, cut_loss=sl, targets=[tp1, tp2], capital=3000.0, symbol=symbol)
-
-    mode = "POSITION" if cmd_name == "position" else ("SWING" if cmd_name == "swing" else "AUTO")
-
-    prompt = (
-        f"Anda adalah AURA-Trade. Sila analisis kaunter {symbol} ({quote.get('name')}) dalam MODE {mode} "
-        f"berdasarkan data pasaran live di bawah.\n\n"
-        f"DATA PASARAN LIVE:\n"
-        f"- LIVE QUOTE: {json.dumps(quote, ensure_ascii=False)}\n"
-        f"- FUNDAMENTALS: {json.dumps(fundamentals, ensure_ascii=False)}\n"
-        f"- NEWS/CATALYST: {json.dumps(catalyst, ensure_ascii=False)}\n"
-        f"- TRADE PLAN (DETERMINISTIC MATH): {json.dumps(trade_plan, ensure_ascii=False)}\n\n"
-        f"Sila keluarkan Laporan 'BEST EYE-VIEW' mengikut gaya Bahasa Melayu santai AURA-Trade & template 8-bahagian rasmi."
-    )
-
-    try:
-        response_text = await _call_supervisor_chat_model(prompt)
-        clean = _clean_response(response_text)
-        await _send_telegram_msg(update, clean, parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error in stock_command: {e}")
-        await _send_telegram_msg(update, f"⚠️ Gagal menjana laporan AURA-Trade untuk {symbol}.", parse_mode="Markdown")
-
-async def screener_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle /screener command to scan Bursa shortlist."""
-    chat_id = update.effective_chat.id
-    mode_arg = context.args[0].lower() if context.args else "swing"
-    
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
-    from tools.trading_service import screen_stocks
-    
-    shariah = True if "shariah" in [a.lower() for a in context.args] else False
-    screener_res = screen_stocks(mode=mode_arg, shariah_only=shariah, limit=8)
-    
-    prompt = (
-        f"Anda adalah AURA-Trade. User meminta screener saham Bursa Malaysia mode '{mode_arg}'.\n\n"
-        f"HASIL SCREENER DATA LIVE:\n"
-        f"{json.dumps(screener_res, ensure_ascii=False)}\n\n"
-        f"Sila formatkan output sebagai jadual Shortlist Screener AURA-Trade berserta justifikasi Top-Down."
-    )
-    
-    try:
-        response_text = await _call_supervisor_chat_model(prompt)
-        clean = _clean_response(response_text)
-        await _send_telegram_msg(update, clean, parse_mode="Markdown")
-    except Exception as e:
-        logger.error(f"Error in screener_command: {e}")
-        await _send_telegram_msg(update, f"⚠️ Gagal menjana screener AURA-Trade.", parse_mode="Markdown")
 
 def register_telegram_handlers(application: Application):
     """Register all Telegram bot command, callback, location, and message handlers."""
-    _audit_gemini_keys_async()
+    audit_gemini_keys_async()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("debug", debug_command))
-    application.add_handler(CommandHandler("confirm", confirm_command))
-    application.add_handler(CommandHandler("sethome", sethome_command))
-    application.add_handler(CommandHandler("sethq", sethq_command))
-    application.add_handler(CommandHandler("stock", stock_command))
-    application.add_handler(CommandHandler("trade", stock_command))
-    application.add_handler(CommandHandler("swing", stock_command))
-    application.add_handler(CommandHandler("position", stock_command))
-    application.add_handler(CommandHandler("screener", screener_command))
+    application.add_handler(CommandHandler("confirm", handle_confirm_command))
+    application.add_handler(CommandHandler("sethome", handle_sethome))
+    application.add_handler(CommandHandler("sethq", handle_sethq))
+    application.add_handler(CommandHandler("stock", handle_stock_command))
+    application.add_handler(CommandHandler("trade", handle_stock_command))
+    application.add_handler(CommandHandler("swing", handle_stock_command))
+    application.add_handler(CommandHandler("position", handle_stock_command))
+    application.add_handler(CommandHandler("screener", handle_screener_command))
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
-    application.add_handler(MessageHandler(filters.Regex(r"^/s\d+$"), scrape_shortcut_command))
+    application.add_handler(MessageHandler(filters.Regex(r"^/s\d+$"), handle_scrape_shortcut))
     application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, handle_message))
-    logger.info("Telegram UI handlers registered successfully.")
-
-
+    logger.info("Telegram UI handlers registered successfully (modular pipelines active).")

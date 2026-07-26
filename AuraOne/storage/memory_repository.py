@@ -104,3 +104,52 @@ def get_key_cooldown_remaining(api_key: str) -> float:
         cooldown_expiry = 0.0
     remaining = cooldown_expiry - time.time()
     return max(0.0, remaining)
+
+# ─── Chat History Buffer (JARVIS Rolling 48-Hour Short-Term Memory) ───────────
+
+def save_chat_message(user_id: int, role: str, content: str) -> None:
+    """Save a user or assistant chat message to short-term conversational history."""
+    if not content or not user_id:
+        return
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO chat_history (user_id, role, content, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+        (user_id, role, content)
+    )
+    conn.commit()
+    conn.close()
+    purge_old_chat_history(days=2)
+
+
+def purge_old_chat_history(days: int = 2) -> int:
+    """Automatically delete chat history messages older than specified days (default: 2 days / 48 hours)."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        f"DELETE FROM chat_history WHERE created_at < datetime('now', '-{days} days')"
+    )
+    deleted = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted
+
+
+def get_recent_chat_history(user_id: int, limit: int = 10) -> List[Dict[str, str]]:
+    """Retrieve up to `limit` most recent chat history messages for a user, ordered chronologically (oldest to newest)."""
+    if not user_id:
+        return []
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT role, content FROM (
+            SELECT id, role, content FROM chat_history
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+        ) ORDER BY id ASC
+    """, (user_id, limit))
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"role": row[0], "content": row[1]} for row in rows]
+

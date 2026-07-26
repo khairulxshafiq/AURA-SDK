@@ -142,6 +142,10 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             telegram_file_id = update.message.photo[-1].file_id
             logger.info(f"Using incoming Telegram photo file_id: {telegram_file_id}")
 
+        # Build initial state for platform selection keyboard
+        state_dict = {"selected": [], "phase": "select_platform"}
+        initial_state = json.dumps(state_dict)
+
         reply_markup = _get_platform_keyboard(state_dict)
         sent_photo_with_buttons = False
 
@@ -179,6 +183,15 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
                     logger.info(f"Successfully sent photo preview with caption & inline buttons. Cached Telegram file_id: {telegram_file_id}")
             except Exception as photo_err:
                 logger.warning(f"Could not send photo preview ({image_url}): {photo_err}")
+                # Notify user that image preview failed but article processing continues
+                try:
+                    notice = "⚠️ _Gambar artikel tidak dapat dipaparkan (sumber mungkin disekat). Artikel tetap diproses._"
+                    if update.message:
+                        await update.message.reply_text(notice, parse_mode="Markdown")
+                    elif update.callback_query and update.callback_query.message:
+                        await update.callback_query.message.reply_text(notice, parse_mode="Markdown")
+                except Exception:
+                    pass
 
         if telegram_file_id:
             try:

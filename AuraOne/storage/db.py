@@ -78,6 +78,17 @@ def init_db() -> None:
         )
     """)
 
+    # Table for short-term chat history (JARVIS conversational context)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            role TEXT,
+            content TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
     # Migration check for existing databases
     try:
         cursor.execute("ALTER TABLE drafts ADD COLUMN tg_cdn_url TEXT")
