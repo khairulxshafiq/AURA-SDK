@@ -747,6 +747,16 @@ async def confirm_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await _send_telegram_msg(update, f"⚠️ Gagal menyimpan ke Airtable: {res.get('error')}")
 
+def _get_user_state_data(user_id: int) -> dict:
+    draft = draft_repo.get_draft(user_id)
+    if not draft:
+        return {}
+    state_str = draft.get("state") or "{}"
+    try:
+        return json.loads(state_str)
+    except Exception:
+        return {}
+
 # ─── Callback Query Handler ────────────────────────────────────────────────────
 
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
