@@ -158,7 +158,7 @@ ELAK:
 }
 
 
-def build_facebook_prompt(style: str, raw_content: str, length: str = "panjang", show_title: bool = False, seed=None) -> tuple[str, str]:
+def build_facebook_prompt(style: str, raw_content: str, length: str = "panjang", show_title: bool = False, with_hashtags: bool = True, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk Facebook.
     Raises KeyError jika gaya tidak wujud dalam FB_PERSONAS.
     """
@@ -186,12 +186,16 @@ def build_facebook_prompt(style: str, raw_content: str, length: str = "panjang",
 
     len_instruction = get_length_instruction(length)
     persona_key = f"fb_{key}"
-    tags = get_hashtags(persona_key, count=2, seed=seed)
+    if with_hashtags:
+        tags = get_hashtags(persona_key, count=2, seed=seed)
+        hashtag_instruction = f"\nAkhiri post dengan 1 baris kosong dan hashtag ini sahaja: {tags}."
+    else:
+        hashtag_instruction = "\nPERATURAN HASHTAG (OFF): DILARANG SAMA SEKALI meletakkan sebarang hashtag (#) dalam hantaran ini."
 
     user_prompt = (
         f"INPUT / BAHAN MENTAH:\n{raw_content}\n\n"
-        f"HASILKAN caption Facebook mengikut gaya \"{p['label']}\".{title_instruction}{len_instruction}\n"
-        f"Akhiri post dengan 1 baris kosong dan hashtag ini sahaja: {tags}."
+        f"HASILKAN caption Facebook mengikut gaya \"{p['label']}\".{title_instruction}{len_instruction}"
+        f"{hashtag_instruction}"
     )
 
     return system_prompt, user_prompt

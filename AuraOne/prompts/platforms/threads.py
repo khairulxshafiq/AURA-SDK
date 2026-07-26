@@ -61,7 +61,7 @@ THREADS_STYLES = {
 }
 
 
-def build_threads_prompt(style: str, count: str | int, raw_content: str, seed=None) -> tuple[str, str]:
+def build_threads_prompt(style: str, count: str | int, raw_content: str, with_hashtags: bool = True, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk Threads.
     Raises KeyError jika style atau count tidak wujud.
     """
@@ -77,7 +77,11 @@ def build_threads_prompt(style: str, count: str | int, raw_content: str, seed=No
 
     c = THREAD_COUNTS[ck]
     s = THREADS_STYLES[sk]
-    tags = get_hashtags("threads", count=2, seed=seed)
+    if with_hashtags:
+        tags = get_hashtags("threads", count=2, seed=seed)
+        hashtag_instruction = f"Akhiri post dengan hashtag ini di bahagian hujung: {tags}."
+    else:
+        hashtag_instruction = "PERATURAN HASHTAG (OFF): DILARANG SAMA SEKALI meletakkan sebarang hashtag (#) dalam hantaran ini."
 
     system_prompt = f"""Kau ialah copywriter Threads profesional.
 {s['guide']}
@@ -91,6 +95,6 @@ def build_threads_prompt(style: str, count: str | int, raw_content: str, seed=No
 
 Hasilkan Threads: {c['label']} dalam gaya "{s['label']}".
 Ingat: pisahkan setiap bebenang dengan "---".
-Akhiri post dengan hashtag ini di bahagian hujung: {tags}."""
+{hashtag_instruction}"""
 
     return system_prompt, user_prompt

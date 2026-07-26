@@ -523,9 +523,9 @@ def _clean_platform_draft_output(text: str) -> str:
 
 # ─── Draft Generation & Confirmation Helpers ─────────────────────────────────
 
-async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0, fb_len: str = "panjang", fb_show_title: bool = False, tx_style: str = "genz") -> str:
+async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = "", thread_length: int = 0, fb_len: str = "panjang", fb_show_title: bool = False, tx_style: str = "genz", with_hashtags: bool = True) -> str:
     global current_key_idx
-    from prompts import build_prompt, enforce_fb_length_limits
+    from prompts import build_prompt, enforce_fb_length_limits, strip_hashtags
 
     plat_lower = plat.lower()
     seed_val = draft.get("counter_val", 0)
@@ -537,6 +537,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 style=style_key,
                 length=fb_len,
                 show_title=fb_show_title,
+                with_hashtags=with_hashtags,
                 raw=draft.get("master_article", ""),
                 seed=seed_val
             )
@@ -548,6 +549,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 platform="threads",
                 style=style_key,
                 count=count_key,
+                with_hashtags=with_hashtags,
                 raw=draft.get("master_article", ""),
                 seed=seed_val
             )
@@ -559,6 +561,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 platform="x",
                 style=style_key,
                 count=count_key,
+                with_hashtags=with_hashtags,
                 raw=draft.get("master_article", ""),
                 seed=seed_val
             )
@@ -567,6 +570,7 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
             sys_p, usr_p = build_prompt(
                 platform=plat_lower,
                 style=fb_style or "estetik",
+                with_hashtags=with_hashtags,
                 raw=draft.get("master_article", ""),
                 seed=seed_val
             )
@@ -595,6 +599,8 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                 cleaned = _clean_platform_draft_output(text)
                 if plat_lower in ["facebook", "fb"]:
                     cleaned = enforce_fb_length_limits(cleaned, fb_len=fb_len, show_title=fb_show_title)
+                if not with_hashtags:
+                    cleaned = strip_hashtags(cleaned)
                 return cleaned
         except asyncio.TimeoutError:
             logger.warning(f"Gemini key #{current_key_idx + 1} draft gen timed out after 10s, placing on cooldown...")
@@ -628,6 +634,8 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
                     cleaned = _clean_platform_draft_output(content)
                     if plat_lower in ["facebook", "fb"]:
                         cleaned = enforce_fb_length_limits(cleaned, fb_len=fb_len, show_title=fb_show_title)
+                    if not with_hashtags:
+                        cleaned = strip_hashtags(cleaned)
                     return cleaned
                 else:
                     logger.error(f"OpenRouter draft gen error ({r.status_code}): {r.text[:200]}")
@@ -639,10 +647,15 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
     fallback_txt = _clean_platform_draft_output(f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}")
     if plat_lower in ["facebook", "fb"]:
         fallback_txt = enforce_fb_length_limits(fallback_txt, fb_len=fb_len, show_title=fb_show_title)
+    if not with_hashtags:
+        from prompts import strip_hashtags
+        fallback_txt = strip_hashtags(fallback_txt)
     return fallback_txt
 
 async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
+    from prompts import strip_hashtags
     generated_drafts = {}
+    with_hashtags = options.get("with_hashtags", True)
     for plat in selected_platforms:
         fb_style = options.get("facebook", "viral_santai")
         fb_len = options.get("fb_len", "panjang")
@@ -650,7 +663,7 @@ async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_pla
         tx_style = options.get("tx_style", "genz")
         thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
         try:
-            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style), timeout=15.0)
+            draft_text = await asyncio.wait_for(_call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style, with_hashtags), timeout=15.0)
         except Exception as err:
             logger.error(f"Draft generation timeout/error for {plat}: {err}")
             style_label = f" ({fb_style})" if fb_style else ""
@@ -660,6 +673,9 @@ async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_pla
             draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
 
         draft_text = _clean_platform_draft_output(draft_text)
+        if not with_hashtags:
+            draft_text = strip_hashtags(draft_text)
+
         generated_drafts[plat] = draft_text
 
     draft_repo.update_platform_draft(user_id, ",".join(selected_platforms), json.dumps(generated_drafts), state="")
@@ -738,8 +754,11 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
 
     user_id = query.from_user.id
-    chat_id = query.message.chat.id
+    chat_id = query.message.chat_id
     data = query.data
+
+    state_data = _get_user_state_data(user_id)
+    draft = draft_repo.get_draft(user_id)
 
     if data.startswith("viral_menu:"):
         offset = int(data.split(":")[1]) if data.split(":")[1].isdigit() else 0
@@ -775,16 +794,9 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.reply_text(f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
         return
 
-    draft = draft_repo.get_draft(user_id)
     if not draft:
         await query.message.reply_text("⚠️ Tiada draf aktif ditemui.")
         return
-
-    state_str = draft.get("state") or "{}"
-    try:
-        state_data = json.loads(state_str)
-    except Exception:
-        state_data = {}
 
     if data.startswith("toggle:"):
         platform = data.split(":")[1]
@@ -807,22 +819,23 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.answer("Sila pilih sekurang-kurangnya satu platform! ⚠️", show_alert=True)
             return
 
-        needs_sub = any(p in selected for p in ["facebook", "x", "threads"])
-        if needs_sub:
-            state_data["phase"] = "select_sub_options"
-            state_data["options"] = state_data.get("options", {})
-            if "facebook" in selected and "facebook" not in state_data["options"]:
-                state_data["options"]["facebook"] = "viral_santai"
-            if "facebook" in selected and "fb_len" not in state_data["options"]:
-                state_data["options"]["fb_len"] = "panjang"
-            if "facebook" in selected and "fb_show_title" not in state_data["options"]:
-                state_data["options"]["fb_show_title"] = False
-            if ("x" in selected or "threads" in selected) and "thread_len" not in state_data["options"]:
-                state_data["options"]["thread_len"] = 5
+        state_data["phase"] = "select_sub_options"
+        state_data["options"] = state_data.get("options", {})
+        if "with_hashtags" not in state_data["options"]:
+            state_data["options"]["with_hashtags"] = True
+        if "facebook" in selected and "facebook" not in state_data["options"]:
+            state_data["options"]["facebook"] = "viral_santai"
+        if "facebook" in selected and "fb_len" not in state_data["options"]:
+            state_data["options"]["fb_len"] = "panjang"
+        if "facebook" in selected and "fb_show_title" not in state_data["options"]:
+            state_data["options"]["fb_show_title"] = False
+        if ("x" in selected or "threads" in selected) and "thread_len" not in state_data["options"]:
+            state_data["options"]["thread_len"] = 5
 
-            draft_repo.update_draft_state(user_id, json.dumps(state_data))
-            reply_markup = _get_sub_options_keyboard(state_data)
-            await query.message.reply_text("Pilih pilihan sub-platform boss:", reply_markup=reply_markup)
+        draft_repo.update_draft_state(user_id, json.dumps(state_data))
+        reply_markup = _get_sub_options_keyboard(state_data)
+        await query.message.reply_text("Pilih pilihan sub-platform boss:", reply_markup=reply_markup)
+
     elif data.startswith("sub:"):
         parts = data.split(":")
         if len(parts) >= 2:

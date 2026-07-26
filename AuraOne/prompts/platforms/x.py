@@ -19,7 +19,7 @@ PERATURAN AM (X / Twitter):
 """
 
 
-def build_x_prompt(style: str, count: str | int, raw_content: str, seed=None) -> tuple[str, str]:
+def build_x_prompt(style: str, count: str | int, raw_content: str, with_hashtags: bool = True, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk X (Twitter).
     Raises KeyError jika style atau count tidak wujud.
     """
@@ -35,7 +35,11 @@ def build_x_prompt(style: str, count: str | int, raw_content: str, seed=None) ->
 
     c = THREAD_COUNTS[ck]
     s = THREADS_STYLES[sk]
-    tags = get_hashtags("x", count=2, seed=seed)
+    if with_hashtags:
+        tags = get_hashtags("x", count=2, seed=seed)
+        hashtag_instruction = f"Akhiri post dengan hashtag ini di bahagian hujung: {tags}."
+    else:
+        hashtag_instruction = "PERATURAN HASHTAG (OFF): DILARANG SAMA SEKALI meletakkan sebarang hashtag (#) dalam hantaran ini."
 
     system_prompt = f"""Kau ialah copywriter X (Twitter) profesional.
 {s['guide']}
@@ -49,6 +53,6 @@ def build_x_prompt(style: str, count: str | int, raw_content: str, seed=None) ->
 
 Hasilkan hantaran X ({c['label']}) dalam gaya "{s['label']}".
 Jika lebih daripada 1 bebenang, pisahkan dengan "---".
-Akhiri post dengan hashtag ini di bahagian hujung: {tags}."""
+{hashtag_instruction}"""
 
     return system_prompt, user_prompt
