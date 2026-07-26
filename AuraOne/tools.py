@@ -34,6 +34,14 @@ from tools.publisher_service import (
     _prepare_drive_image_for_airtable,
 )
 
+from tools.trading_service import (
+    resolve_stock_ticker,
+    get_stock_quote,
+    get_financial_ratios,
+    get_rsi,
+    get_sma,
+)
+
 # Tool wrappers for LLM invocation
 def save_user_fact(fact_content: str, category: str = "general") -> str:
     """Simpan satu fakta penting atau maklumat baru yang dipelajari tentang pengguna ke memori jangka panjang."""
@@ -70,4 +78,10 @@ __all__ = [
     "_prepare_drive_image_for_airtable",
     "save_user_fact",
     "update_user_preference",
+    "resolve_stock_ticker",
+    "get_stock_quote",
+    "get_financial_ratios",
+    "get_rsi",
+    "get_sma",
 ]
+

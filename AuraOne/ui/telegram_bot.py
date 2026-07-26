@@ -1076,6 +1076,52 @@ def _audit_gemini_keys_async():
                     logger.warning(f"[KeyAuditor] Key audit ping error for {key[:8]}...: {e}")
     threading.Thread(target=_check, daemon=True).start()
 
+async def stock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle /stock or /trade command for stock market analysis & technical setup."""
+    chat_id = update.effective_chat.id
+    query = " ".join(context.args).strip() if context.args else ""
+    if not query:
+        await _send_telegram_msg(
+            update,
+            "Sila masukkan simbol atau nama syarikat. Contoh:\n`/stock 1155.KL` atau `/stock Maybank`",
+            parse_mode="Markdown"
+        )
+        return
+
+    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+
+    from tools.trading_service import resolve_stock_ticker, get_stock_quote, get_financial_ratios, get_rsi, get_sma
+    resolved = resolve_stock_ticker(query)
+
+    quote = await asyncio.to_thread(get_stock_quote, resolved)
+    if isinstance(quote, dict) and "error" in quote:
+        await _send_telegram_msg(update, f"⚠️ {quote['error']}", parse_mode="Markdown")
+        return
+
+    ratios = await asyncio.to_thread(get_financial_ratios, resolved)
+    rsi = await asyncio.to_thread(get_rsi, resolved)
+    sma = await asyncio.to_thread(get_sma, resolved)
+
+    prompt = (
+        f"Berdasarkan data pasaran live yfinance di bawah, bina **Laporan Analisis Trading 8-Bahagian** dalam Bahasa Melayu "
+        f"mengikut kriteria kemahiran trading (Gaya Dividen ASB & Swing Setup).\n\n"
+        f"DATA PASARAN LIVE:\n"
+        f"- Symbol Resolved: {resolved}\n"
+        f"- Stock Quote: {json.dumps(quote, ensure_ascii=False)}\n"
+        f"- Fundamental Ratios: {json.dumps(ratios, ensure_ascii=False)}\n"
+        f"- RSI-14 Indicator: {json.dumps(rsi, ensure_ascii=False)}\n"
+        f"- SMA-50 Indicator: {json.dumps(sma, ensure_ascii=False)}\n\n"
+        f"Sila formatkan laporan 8-bahagian secara lengkap dengan emoji yang sesuai."
+    )
+
+    try:
+        response_text = await _call_supervisor_chat_model(prompt)
+        clean = _clean_response(response_text)
+        await _send_telegram_msg(update, clean, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"Error in stock_command: {e}")
+        await _send_telegram_msg(update, f"⚠️ Gagal menjana laporan analisis trading untuk {resolved}.", parse_mode="Markdown")
+
 def register_telegram_handlers(application: Application):
     """Register all Telegram bot command, callback, location, and message handlers."""
     _audit_gemini_keys_async()
@@ -1084,8 +1130,11 @@ def register_telegram_handlers(application: Application):
     application.add_handler(CommandHandler("confirm", confirm_command))
     application.add_handler(CommandHandler("sethome", sethome_command))
     application.add_handler(CommandHandler("sethq", sethq_command))
+    application.add_handler(CommandHandler("stock", stock_command))
+    application.add_handler(CommandHandler("trade", stock_command))
     application.add_handler(CallbackQueryHandler(handle_callback_query))
     application.add_handler(MessageHandler(filters.LOCATION, handle_location))
     application.add_handler(MessageHandler(filters.Regex(r"^/s\d+$"), scrape_shortcut_command))
     application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO) & ~filters.COMMAND, handle_message))
     logger.info("Telegram UI handlers registered successfully.")
+
