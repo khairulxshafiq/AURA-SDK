@@ -140,17 +140,41 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             telegram_file_id = update.message.photo[-1].file_id
             logger.info(f"Using incoming Telegram photo file_id: {telegram_file_id}")
 
-        # 1. Message 1: Send Photo Preview (short caption < 50 chars to avoid Telegram's 1,024 caption limit)
+        reply_markup = _get_platform_keyboard(state_dict)
+        sent_photo_with_buttons = False
+
+        # Telegram Preview Rule: If article_image_url exists, send image first using sendPhoto with Caption (Title, Source, Summary) + Inline Buttons. Do not send text-only message if image exists.
         if image_url and not telegram_file_id:
             try:
-                photo_msg = await context.bot.send_photo(
-                    chat_id=chat_id,
-                    photo=image_url,
-                    caption="📸 Imej Artikel Utama"
-                )
+                title_part = f"📌 *{title}*"
+                source_part = f"\n🌐 *Source:* `{source_url}`" if source_url else ""
+                header_len = len(title_part) + len(source_part) + 80
+                avail_summary_len = max(100, 1000 - header_len)
+                summary_text = master_article[:avail_summary_len] if master_article else ""
+                summary_part = f"\n📝 *Summary:*\n{summary_text}..." if summary_text else ""
+
+                caption = f"{title_part}{source_part}{summary_part}\n\n👇 *Pilih platform & gaya penulisan di bawah untuk diolah:*"
+
+                photo_msg = None
+                if update.message:
+                    photo_msg = await update.message.reply_photo(
+                        photo=image_url,
+                        caption=caption,
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup
+                    )
+                elif update.callback_query and update.callback_query.message:
+                    photo_msg = await update.callback_query.message.reply_photo(
+                        photo=image_url,
+                        caption=caption,
+                        parse_mode="Markdown",
+                        reply_markup=reply_markup
+                    )
+
                 if photo_msg and photo_msg.photo:
                     telegram_file_id = photo_msg.photo[-1].file_id
-                    logger.info(f"Successfully sent photo preview. Cached Telegram file_id: {telegram_file_id}")
+                    sent_photo_with_buttons = True
+                    logger.info(f"Successfully sent photo preview with caption & inline buttons. Cached Telegram file_id: {telegram_file_id}")
             except Exception as photo_err:
                 logger.warning(f"Could not send photo preview ({image_url}): {photo_err}")
 
@@ -161,27 +185,6 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             except Exception as cdn_err:
                 logger.warning(f"Could not resolve Telegram CDN URL: {cdn_err}")
 
-        selected_platforms_list = []
-        user_txt = (update.message.text or update.message.caption or "").lower()
-        if "fb" in user_txt or "facebook" in user_txt:
-            selected_platforms_list.append("facebook")
-        if "threads" in user_txt:
-            selected_platforms_list.append("threads")
-        if "twitter" in user_txt or " x " in f" {user_txt} ":
-            selected_platforms_list.append("x")
-        if "lemon8" in user_txt:
-            selected_platforms_list.append("lemon8")
-
-        state_dict = {
-            "phase": "select_platforms",
-            "selected": selected_platforms_list,
-            "shopee_metadata": {
-                "content_type": type_match.group(1).strip() if type_match else "Article",
-                "original_price": price_match.group(1).strip() if price_match else "",
-                "seller_location": location_match.group(1).strip() if location_match else ""
-            }
-        }
-        initial_state = json.dumps(state_dict)
         draft_repo.save_draft(
             user_id=user_id,
             title=title,
@@ -203,9 +206,12 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             daemon=True
         ).start()
 
-        # Truncate master_article to max 3500 chars to respect Telegram's 4,096 text message limit
-        display_article = master_article[:3500] if master_article else ""
+        # If photo with caption and inline buttons was sent successfully, skip text-only message
+        if sent_photo_with_buttons:
+            return "[DRAFT_SENT_WITH_KEYBOARD]"
 
+        # Fallback to text message + inline buttons if image does not exist or photo send failed
+        display_article = master_article[:3500] if master_article else ""
         formatted_display = (
             f"📰 *MASTER ARTICLE (NEUTRAL CORE CONTEXT & STORY HUB)*\n\n"
             f"*{title}*\n\n"
@@ -213,15 +219,19 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
             f"👇 *Sila pilih platform & gaya penulisan di bawah untuk diolah:*"
         )
 
-        reply_markup = _get_platform_keyboard(state_dict)
-
-        # 2. Message 2: Send Full Master Article Text + Inline Keyboards (wrapped in try-except)
         try:
-            await update.message.reply_text(
-                formatted_display,
-                parse_mode="Markdown",
-                reply_markup=reply_markup
-            )
+            if update.message:
+                await update.message.reply_text(
+                    formatted_display,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
+            elif update.callback_query and update.callback_query.message:
+                await update.callback_query.message.reply_text(
+                    formatted_display,
+                    parse_mode="Markdown",
+                    reply_markup=reply_markup
+                )
         except Exception as msg_err:
             logger.warning(f"Markdown reply failed ({msg_err}), falling back to plain text delivery...")
             try:
@@ -231,10 +241,16 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
                     f"{display_article}\n\n"
                     f"👇 Sila pilih platform & gaya penulisan di bawah untuk diolah:"
                 )
-                await update.message.reply_text(
-                    plain_display,
-                    reply_markup=reply_markup
-                )
+                if update.message:
+                    await update.message.reply_text(
+                        plain_display,
+                        reply_markup=reply_markup
+                    )
+                elif update.callback_query and update.callback_query.message:
+                    await update.callback_query.message.reply_text(
+                        plain_display,
+                        reply_markup=reply_markup
+                    )
             except Exception as fallback_err:
                 logger.error(f"Failed to send master article text message completely: {fallback_err}")
 

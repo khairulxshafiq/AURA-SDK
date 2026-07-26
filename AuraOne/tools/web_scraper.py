@@ -66,6 +66,79 @@ def resolve_gnews_url(url: str) -> str:
         logger.warning(f"Could not resolve GNews redirect for {url}: {e}")
         return url
 
+def extract_article_image_url(soup: BeautifulSoup, page_url: str) -> str:
+    """
+    Extracts article image URL following strict 4-tier priority:
+    1. og:image
+    2. twitter:image
+    3. article hero image
+    4. first valid article image
+    """
+    if not soup:
+        return ""
+
+    # Priority 1: og:image
+    og_meta = (
+        soup.find("meta", property="og:image") or
+        soup.find("meta", attrs={"name": "og:image"}) or
+        soup.find("meta", property="og:image:secure_url")
+    )
+    if og_meta and og_meta.get("content"):
+        content = og_meta["content"].strip()
+        if content:
+            abs_url = urllib.parse.urljoin(page_url, content)
+            if abs_url.startswith("http"):
+                return abs_url
+
+    # Priority 2: twitter:image
+    tw_meta = (
+        soup.find("meta", attrs={"name": "twitter:image"}) or
+        soup.find("meta", property="twitter:image") or
+        soup.find("meta", attrs={"name": "twitter:image:src"})
+    )
+    if tw_meta and tw_meta.get("content"):
+        content = tw_meta["content"].strip()
+        if content:
+            abs_url = urllib.parse.urljoin(page_url, content)
+            if abs_url.startswith("http"):
+                return abs_url
+
+    # Priority 3: article hero image
+    hero_selectors = [
+        "article figure img",
+        "article .hero img",
+        ".hero-image img",
+        "figure.hero img",
+        "header img",
+        ".featured-image img",
+        ".entry-thumbnail img"
+    ]
+    for sel in hero_selectors:
+        hero_el = soup.select_one(sel)
+        if hero_el:
+            src = hero_el.get("src") or hero_el.get("data-src") or hero_el.get("data-lazy-src")
+            if src:
+                abs_url = urllib.parse.urljoin(page_url, src.strip())
+                if abs_url.startswith("http") and any(ext in abs_url.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                    return abs_url
+
+    # Priority 4: first valid article image
+    for img in soup.select("article img, main img, body img"):
+        src = img.get("src") or img.get("data-src") or img.get("data-lazy-src")
+        if not src:
+            continue
+        abs_url = urllib.parse.urljoin(page_url, src.strip())
+        if abs_url.startswith("http") and any(ext in abs_url.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+            width = img.get("width")
+            height = img.get("height")
+            if width and str(width).isdigit() and int(width) < 100:
+                continue
+            if height and str(height).isdigit() and int(height) < 100:
+                continue
+            return abs_url
+
+    return ""
+
 def _scrape_firecrawl(url: str, max_content_length: int = 30000) -> dict:
     """Scrape using Firecrawl API (bot-bypass capable)."""
     if not FIRECRAWL_API_KEY:
@@ -98,7 +171,13 @@ def _scrape_firecrawl(url: str, max_content_length: int = 30000) -> dict:
 
         metadata = fc_data.get("metadata", {})
         title = metadata.get("title", "") or metadata.get("ogTitle", "")
-        images = [metadata.get("ogImage", "")] if metadata.get("ogImage") else []
+        article_img = metadata.get("ogImage", "") or metadata.get("og:image", "") or metadata.get("twitter:image", "")
+        if not article_img:
+            img_match = re.search(r"!\[.*?\]\((https?://[^\s\)]+)\)", content)
+            if img_match:
+                article_img = img_match.group(1)
+
+        images = [article_img] if article_img else []
         links = fc_data.get("links", [])[:20]
 
         return {
@@ -107,6 +186,8 @@ def _scrape_firecrawl(url: str, max_content_length: int = 30000) -> dict:
             "title": title,
             "content": content,
             "images": images,
+            "article_image_url": article_img,
+            "image_url": article_img,
             "links": links,
             "url": url
         }
@@ -136,7 +217,6 @@ def _scrape_jina(url: str, max_content_length: int = 30000) -> dict:
         if len(content) > max_content_length:
             content = content[:max_content_length]
 
-        # Basic title extraction from first markdown header
         title = ""
         lines = content.splitlines()
         for line in lines:
@@ -144,12 +224,19 @@ def _scrape_jina(url: str, max_content_length: int = 30000) -> dict:
                 title = line.replace("# ", "").strip()
                 break
 
+        article_img = ""
+        img_match = re.search(r"!\[.*?\]\((https?://[^\s\)]+)\)", content)
+        if img_match:
+            article_img = img_match.group(1)
+
         return {
             "status": "success",
             "tier": "jina",
             "title": title,
             "content": content,
-            "images": [],
+            "images": [article_img] if article_img else [],
+            "article_image_url": article_img,
+            "image_url": article_img,
             "links": [],
             "url": url
         }
@@ -185,7 +272,13 @@ def _scrape_native(url: str, max_content_length: int = 30000) -> dict:
     except Exception as e:
         return {"status": "error", "tier": "native", "error": str(e)}
 
-    soup = BeautifulSoup(resp.text, "lxml")
+    try:
+        soup_full = BeautifulSoup(resp.text, "lxml")
+    except Exception:
+        soup_full = BeautifulSoup(resp.text, "html.parser")
+    article_image_url = extract_article_image_url(soup_full, url)
+
+    soup = soup_full
     for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
         tag.decompose()
 
@@ -202,14 +295,15 @@ def _scrape_native(url: str, max_content_length: int = 30000) -> dict:
     if len(content) > max_content_length:
         content = content[:max_content_length]
 
-    images = []
-    for img in soup.find_all("img", src=True):
-        src = img["src"]
-        abs_src = urllib.parse.urljoin(url, src)
-        if abs_src.startswith("http") and any(ext in abs_src.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-            images.append(abs_src)
-        if len(images) >= 3:
-            break
+    images = [article_image_url] if article_image_url else []
+    if not images:
+        for img in soup.find_all("img", src=True):
+            src = img["src"]
+            abs_src = urllib.parse.urljoin(url, src)
+            if abs_src.startswith("http") and any(ext in abs_src.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
+                images.append(abs_src)
+            if len(images) >= 3:
+                break
 
     links = []
     for a in soup.find_all("a", href=True):
@@ -226,6 +320,8 @@ def _scrape_native(url: str, max_content_length: int = 30000) -> dict:
         "title": title,
         "content": content,
         "images": images,
+        "article_image_url": article_image_url or (images[0] if images else ""),
+        "image_url": article_image_url or (images[0] if images else ""),
         "links": links,
         "url": url
     }
