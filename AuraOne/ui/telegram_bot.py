@@ -21,7 +21,7 @@ import storage.location_repository as location_repo
 import storage.draft_repository as draft_repo
 
 from tools.web_scraper import scrape_url
-from tools.search_engine import fetch_gnews_articles, search_web
+from tools.search_engine import fetch_gnews_articles, search_web, fetch_live_news_with_fallback
 from tools.location_service import (
     reverse_geocode_location, _get_weather_forecast, _get_extended_weather_forecast
 )
@@ -412,11 +412,11 @@ async def send_gnews_trending(update: Update, context: ContextTypes.DEFAULT_TYPE
     }
 
     q, cat_title = cat_queries.get(category, (f"{category} Malaysia 2026", category.upper()))
-    articles = fetch_gnews_articles(q, max_items)
+    articles, source_tier = fetch_live_news_with_fallback(q, max_items)
     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
 
     if not articles:
-        reply_text = f"⚠️ Tiada berita terkini dijumpai untuk kategori ini dari Google News."
+        reply_text = f"⚠️ Tiada berita terkini dijumpai untuk kategori ini dari carian terus."
         await update.message.reply_text(reply_text, parse_mode=None, reply_markup=_get_gnews_keyboard())
         return
 
@@ -990,8 +990,14 @@ def _is_bare_url(text: str) -> bool:
     stripped = URL_RE.sub('', text).strip()
     return len(stripped.split()) <= 3
 
+LIVE_SEARCH_KEYWORDS = [
+    "berita terkini", "current news", "headline", "trending malaysia",
+    "trending dunia", "cerita menarik", "cerita semasa", "apa berlaku hari ini",
+    "top stories", "berita", "trending", "viral", "gnews", "/news"
+]
+
 def route_intent(message_text: str) -> str:
-    """Determine message intent: SCRAPE_PIPELINE, URL_SUGGEST, CONTEXTUAL_CHAT, or DAILY_CHAT."""
+    """Determine message intent: SCRAPE_PIPELINE, URL_SUGGEST, CONTEXTUAL_CHAT, LIVE_NEWS_SEARCH, or DAILY_CHAT."""
     text = message_text.strip()
     has_url = bool(URL_RE.search(text))
     is_s2 = text.lower().startswith('/s2') or bool(re.match(r'^/s\d+', text, re.IGNORECASE))
@@ -1009,7 +1015,12 @@ def route_intent(message_text: str) -> str:
     if has_url and not has_scrape_word:
         return "CONTEXTUAL_CHAT"
 
-    # 4) Takde URL → chat harian biasa (KEKAL)
+    # 4) Mandatory Live Search Router Trigger
+    text_clean = text.lower()
+    if any(kw in text_clean for kw in LIVE_SEARCH_KEYWORDS):
+        return "LIVE_NEWS_SEARCH"
+
+    # 5) Takde URL → chat harian biasa (KEKAL)
     return "DAILY_CHAT"
 
 # ─── Message Handler Router ───────────────────────────────────────────────────
@@ -1072,7 +1083,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             await _send_telegram_msg(update, clean, parse_mode="Markdown")
             return
 
-        elif any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
+        elif intent == "LIVE_NEWS_SEARCH":
             await send_gnews_trending(update, context, category="trending", max_items=6)
             return
 

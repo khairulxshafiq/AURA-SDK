@@ -113,3 +113,84 @@ def fetch_gnews_articles(query: str = "Malaysia trending viral 2026", max_items:
     except Exception as e:
         logger.warning(f"Error fetching GNews RSS: {e}")
     return articles
+
+DEFAULT_RSS_FEEDS = [
+    ("https://www.hmetro.com.my/utama.xml", "Harian Metro"),
+    ("https://www.astroawani.com/rss/berita-malaysia.xml", "Astro Awani"),
+    ("http://feeds.bbci.co.uk/news/rss.xml", "BBC News")
+]
+
+def fetch_rss_articles(max_items: int = 6) -> list:
+    """Fetch articles from direct RSS feeds as Tier 3 fallback."""
+    articles = []
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    for feed_url, default_source in DEFAULT_RSS_FEEDS:
+        if len(articles) >= max_items:
+            break
+        try:
+            with httpx.Client(timeout=8, follow_redirects=True, headers=headers) as client:
+                res = client.get(feed_url)
+                if res.status_code == 200:
+                    root = ET.fromstring(res.text)
+                    items = root.findall(".//item")
+                    for item in items[:max_items - len(articles)]:
+                        raw_title = item.find("title").text if item.find("title") is not None else ""
+                        link = item.find("link").text if item.find("link") is not None else ""
+                        pub_date = item.find("pubDate").text if item.find("pubDate") is not None else ""
+                        desc = item.find("description").text if item.find("description") is not None else ""
+
+                        clean_title = html.unescape(raw_title).strip()
+                        clean_desc = re.sub(r"<[^>]+>", "", html.unescape(desc or "")).strip()
+                        if len(clean_desc) > 130:
+                            clean_desc = clean_desc[:127] + "..."
+                        if not clean_desc:
+                            clean_desc = f"Berita daripada {default_source}."
+
+                        if clean_title and link:
+                            articles.append({
+                                "title": clean_title,
+                                "source": default_source,
+                                "link": link,
+                                "date": pub_date,
+                                "desc": clean_desc
+                            })
+        except Exception as e:
+            logger.warning(f"RSS fetch error for {feed_url}: {e}")
+    return articles
+
+def fetch_live_news_with_fallback(query: str = "Malaysia trending viral 2026", max_items: int = 6) -> tuple:
+    """
+    Executes live news search with strict priority sequence:
+    1. Tier 1: GNews RSS (fetch_gnews_articles)
+    2. Tier 2: Internet Search (search_web)
+    3. Tier 3: Direct RSS Sources (fetch_rss_articles)
+    Returns: (articles_list, source_tier_name)
+    """
+    # 1. Tier 1: GNews
+    gnews_arts = fetch_gnews_articles(query, max_items=max_items)
+    if gnews_arts:
+        return gnews_arts, "GNews"
+
+    # 2. Tier 2: Internet Search
+    logger.info(f"[LiveNewsFallback] Tier 1 GNews empty for '{query}'. Trying Tier 2 (Internet Search)...")
+    web_res = search_web(query, num_results=max_items)
+    if web_res.get("status") == "success" and web_res.get("results"):
+        web_arts = []
+        for r in web_res["results"]:
+            web_arts.append({
+                "title": r.get("title", ""),
+                "source": "Internet Search",
+                "link": r.get("link", ""),
+                "date": "",
+                "desc": r.get("snippet", "")
+            })
+        return web_arts, "Internet Search"
+
+    # 3. Tier 3: RSS Feeds
+    logger.info(f"[LiveNewsFallback] Tier 2 Internet Search empty for '{query}'. Trying Tier 3 (RSS Feeds)...")
+    rss_arts = fetch_rss_articles(max_items=max_items)
+    if rss_arts:
+        return rss_arts, "RSS Feeds"
+
+    return [], "None"
+

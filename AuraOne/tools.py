@@ -13,6 +13,8 @@ from tools.web_scraper import (
 from tools.search_engine import (
     search_web,
     fetch_gnews_articles,
+    fetch_rss_articles,
+    fetch_live_news_with_fallback,
 )
 from tools.location_service import (
     reverse_geocode_location,
