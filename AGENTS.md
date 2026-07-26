@@ -12,7 +12,7 @@ Refer to `README.md` for high-level system architecture and systemd services.
 - `AuraOne/tools/`: Atomic modular tools (`web_scraper.py`, `search_engine.py`, `location_service.py`, `apify_service.py`, `publisher_service.py`).
 - `AuraOne/skills/`: Modular agent skills. Each skill contains a `SKILL.md`.
 - `AuraOne/reference_blueprints/`: Architectural blueprints and API schemas.
-- `AuraOne/LUMA_MEMORY.md`: Persistence state tracking.
+- `LUMA_MEMORY.md`: Persistence state tracking (Single Source of Truth at project root).
 
 ---
 
