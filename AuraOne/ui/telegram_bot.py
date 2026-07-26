@@ -654,8 +654,8 @@ async def _call_draft_generator_model(plat: str, draft: dict, fb_style: str = ""
 
 async def _generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
     from prompts import strip_hashtags
-    generated_drafts = {}
-    with_hashtags = options.get("with_hashtags", True)
+    raw_wh = options.get("with_hashtags", True)
+    with_hashtags = (raw_wh is True or str(raw_wh).lower() == "true") if raw_wh is not False else False
     for plat in selected_platforms:
         fb_style = options.get("facebook", "viral_santai")
         fb_len = options.get("fb_len", "panjang")
@@ -856,6 +856,13 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 options["thread_len"] = int(val) if val.isdigit() else 5
             elif key == "fb_show_title":
                 options["fb_show_title"] = not options.get("fb_show_title", False)
+            elif key == "with_hashtags":
+                if val.lower() == "true":
+                    options["with_hashtags"] = True
+                elif val.lower() == "false":
+                    options["with_hashtags"] = False
+                else:
+                    options["with_hashtags"] = not (options.get("with_hashtags") is True or str(options.get("with_hashtags")).lower() == "true")
             else:
                 options[key] = val
             state_data["options"] = options
