@@ -1031,6 +1031,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             await confirm_command(update, context)
             return
 
+        news_keywords = [
+            "berita", "cerita menarik", "cerita viral", "cerita", "isu semasa",
+            "gnews", "/news", "trending", "viral", "apa cerita", "apa berita",
+            "cerita panas", "confession"
+        ]
+        if not URL_RE.search(user_message) and any(k in msg_clean for k in news_keywords):
+            await send_gnews_trending(update, context, category="trending", max_items=6)
+            return
+
         intent = route_intent(user_message)
         logger.info(f"[IntentRouter] Message '{user_message[:40]}...' routed to intent: {intent}")
 
@@ -1070,10 +1079,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
             if target_url and target_url not in clean:
                 clean += f"\n\n_(Nota: Kalau nak aku jadikan content, taip `Scrape {target_url}` ye.)_"
             await _send_telegram_msg(update, clean, parse_mode="Markdown")
-            return
-
-        elif any(k in msg_clean for k in ["berita menarik", "berita viral", "berita trending", "gnews", "/news"]):
-            await send_gnews_trending(update, context, category="trending", max_items=6)
             return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
