@@ -776,6 +776,29 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.reply_text(f"🏢 *LOKASI HQ SAKLUMA BERJAYA DISIMPAN!*\n\n• Alamat: `{loc['address']}`", parse_mode="Markdown")
         return
 
+    if data.startswith("do_scrape:"):
+        target_url = data.split("do_scrape:", 1)[1]
+        await query.answer("🚀 Mula scrape artikel...")
+        await query.message.reply_text(f"⚡ Mula scrape & olah kandungan daripada:\n`{target_url}`", parse_mode="Markdown")
+        await _execute_direct_scrape_pipeline(target_url, user_id, chat_id, context, update)
+        return
+
+    if data.startswith("do_summarize:"):
+        target_url = data.split("do_summarize:", 1)[1]
+        await query.answer("🔍 Meringkaskan artikel...")
+        scraped = scrape_url(target_url)
+        content = scraped.get("content", "")
+        title = scraped.get("title", "Artikel")
+        img = scraped.get("article_image_url", "") or scraped.get("image_url", "")
+        if img and img.startswith("http://"):
+            img = "https://" + img[7:]
+        summary_text = f"📰 *{title}*\n\n{content[:1200]}...\n\n🔗 `{target_url}`"
+        if img:
+            await query.message.reply_photo(photo=img, caption=summary_text, parse_mode="Markdown")
+        else:
+            await query.message.reply_text(summary_text, parse_mode="Markdown")
+        return
+
     draft = draft_repo.get_draft(user_id)
     if not draft:
         await query.message.reply_text("⚠️ Tiada draf aktif ditemui.")
@@ -1007,24 +1030,20 @@ def route_intent(message_text: str) -> str:
     is_s2 = text.lower().startswith('/s2') or bool(re.match(r'^/s\d+', text, re.IGNORECASE))
     has_scrape_word = bool(SCRAPE_TRIGGER_RE.search(text))
 
-    # 1) Trigger scrape eksplisit
-    if has_url and (is_s2 or has_scrape_word):
+    # 1) Direct URL paste or explicit scrape trigger -> SCRAPE_PIPELINE
+    if has_url and (is_s2 or has_scrape_word or _is_bare_url(text)):
         return "SCRAPE_PIPELINE"
 
-    # 2) URL kosong sahaja (takde teks lain bermakna, takde trigger)
-    if has_url and _is_bare_url(text):
-        return "URL_SUGGEST"
-
-    # 3) URL + teks/soalan (tapi takde perkataan scrape)
+    # 2) URL + question/chat -> CONTEXTUAL_CHAT
     if has_url and not has_scrape_word:
         return "CONTEXTUAL_CHAT"
 
-    # 4) Mandatory Live Search Router Trigger
+    # 3) Mandatory Live Search Router Trigger
     text_clean = text.lower()
     if any(kw in text_clean for kw in LIVE_SEARCH_KEYWORDS):
         return "LIVE_NEWS_SEARCH"
 
-    # 5) Takde URL → chat harian biasa (KEKAL)
+    # 4) Takde URL → chat harian biasa (KEKAL)
     return "DAILY_CHAT"
 
 # ─── Message Handler Router ───────────────────────────────────────────────────
