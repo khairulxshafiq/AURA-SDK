@@ -129,7 +129,7 @@
         "triggerField": "Last Modified Time",
         "downloadAttachments": false,
         "additionalFields": {
-          "formula": "{Status} = \"Approved\""
+          "formula": "OR({Status} = \"Approved\", {Post Status} = \"Approved\")"
         }
       },
       "id": "2c7a74f4-be2a-4940-9e6e-e4e43f1a1e2f",
@@ -162,10 +162,12 @@
           "value": "tbl0YLPzsfneGd0Xb",
           "mode": "id"
         },
+        "id": "={{ $node[\"Approved Trigger\"].json.id }}",
         "columns": {
           "mappingMode": "defineBelow",
           "value": {
-            "Post Status": "Posted"
+            "Post Status": "Posted",
+            "Status": "Posted"
           },
           "matchingColumns": [],
           "schema": [
@@ -176,6 +178,14 @@
               "removed": false,
               "readOnly": false,
               "displayName": "Post Status"
+            },
+            {
+              "id": "Status",
+              "type": "string",
+              "display": true,
+              "removed": false,
+              "readOnly": false,
+              "displayName": "Status"
             }
           ],
           "attemptToConvertTypes": false,
