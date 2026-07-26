@@ -35,11 +35,13 @@ from tools.publisher_service import (
 )
 
 from tools.trading_service import (
-    resolve_stock_ticker,
-    get_stock_quote,
-    get_financial_ratios,
-    get_rsi,
-    get_sma,
+    resolve_symbol,
+    get_live_quote,
+    get_fundamentals,
+    get_news_catalyst,
+    screen_stocks,
+    compute_trade_plan,
+    set_price_alert,
 )
 
 # Tool wrappers for LLM invocation
@@ -78,10 +80,13 @@ __all__ = [
     "_prepare_drive_image_for_airtable",
     "save_user_fact",
     "update_user_preference",
-    "resolve_stock_ticker",
-    "get_stock_quote",
-    "get_financial_ratios",
-    "get_rsi",
-    "get_sma",
+    "resolve_symbol",
+    "get_live_quote",
+    "get_fundamentals",
+    "get_news_catalyst",
+    "screen_stocks",
+    "compute_trade_plan",
+    "set_price_alert",
 ]
+
 
