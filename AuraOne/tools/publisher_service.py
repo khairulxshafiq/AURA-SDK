@@ -213,7 +213,6 @@ def save_draft_to_airtable(
     if clean_caption:
         clean_caption = clean_caption.replace("**", "").replace("*", "")
 
-    # SINGLE SOURCE OF TRUTH: Only Telegram CDN Direct File Link is used for Airtable Attachment ingestion
     fields = {
         "Title": title,
         "Caption": clean_caption,
@@ -223,13 +222,9 @@ def save_draft_to_airtable(
         "Content Type": content_type,
         "Created By": created_by,
         "Hashtags": hashtags,
-        "Scheduled Date": scheduled_time,
         "Image file": [{"url": image_url}] if image_url else None,
-        "Gambar": [{"url": image_url}] if image_url else None,
         "Original Price": original_price if original_price else None,
-        "Seller Location": seller_location if seller_location else None,
-        "Source URL": source_url if source_url else None,
-        "Product Link": source_url if source_url else None
+        "Seller Location": seller_location if seller_location else None
     }
     fields = {k: v for k, v in fields.items() if v is not None}
 

@@ -114,6 +114,8 @@ async def _process_response_draft(user_id: int, chat_id: int, response_text: str
 
     if title_match or master_match or (raw_body and len(raw_body) > 30):
         image_url = image_match.group(1).strip() if image_match else ""
+        if image_url and image_url.startswith("http://"):
+            image_url = "https://" + image_url[7:]
         title = title_match.group(1).strip() if title_match else "Artikel Tanpa Tajuk"
         source_url = source_match.group(1).strip() if source_match else ""
         master_article = master_match.group(1).strip() if master_match else ""

@@ -210,8 +210,9 @@ async def _execute_direct_scrape_pipeline(url: str, user_id: int, chat_id: int, 
         return
 
     raw_title = scraped.get("title", "Artikel Berita")
-    raw_content = scraped.get("content", "")
-    image_url = scraped.get("image_url", "")
+    image_url = scraped.get("article_image_url", "") or scraped.get("image_url", "")
+    if image_url and image_url.startswith("http://"):
+        image_url = "https://" + image_url[7:]
     source_url = scraped.get("url", url)
 
     if not raw_content or len(raw_content) < 50:
