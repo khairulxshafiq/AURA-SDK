@@ -883,17 +883,20 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         if not specific_draft:
             specific_draft = draft.get("master_article", "")
 
-        await query.message.reply_text(f"🚀 Penjanaan Telegram Direct CDN Link & muat naik draf {plat_to_confirm.upper()} ke Airtable...")
         telegram_direct_cdn_url = await _prepare_drive_image_for_airtable(
             draft["image_url"], draft.get("telegram_file_id", ""), draft.get("counter_val", 0), context
         )
+
+        target_airtable_img = telegram_direct_cdn_url or draft.get("image_url", "")
+        if target_airtable_img and target_airtable_img.startswith("http://"):
+            target_airtable_img = "https://" + target_airtable_img[7:]
 
         res = save_draft_to_airtable(
             title=draft["title"],
             caption=specific_draft,
             platform=plat_to_confirm,
             source_url=draft["source_url"],
-            image_url=telegram_direct_cdn_url,
+            image_url=target_airtable_img,
             status="Draft",
             hashtags=draft["hashtags"]
         )

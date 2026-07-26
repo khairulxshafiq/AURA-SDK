@@ -66,6 +66,15 @@ def resolve_gnews_url(url: str) -> str:
         logger.warning(f"Could not resolve GNews redirect for {url}: {e}")
         return url
 
+def _ensure_https(url_str: str) -> str:
+    """Ensure URL uses secure https scheme to satisfy Telegram API & Airtable ingestion."""
+    if not url_str:
+        return ""
+    url_str = url_str.strip()
+    if url_str.startswith("http://"):
+        return "https://" + url_str[7:]
+    return url_str
+
 def extract_article_image_url(soup: BeautifulSoup, page_url: str) -> str:
     """
     Extracts article image URL following strict 4-tier priority:
@@ -88,7 +97,7 @@ def extract_article_image_url(soup: BeautifulSoup, page_url: str) -> str:
         if content:
             abs_url = urllib.parse.urljoin(page_url, content)
             if abs_url.startswith("http"):
-                return abs_url
+                return _ensure_https(abs_url)
 
     # Priority 2: twitter:image
     tw_meta = (
@@ -101,7 +110,7 @@ def extract_article_image_url(soup: BeautifulSoup, page_url: str) -> str:
         if content:
             abs_url = urllib.parse.urljoin(page_url, content)
             if abs_url.startswith("http"):
-                return abs_url
+                return _ensure_https(abs_url)
 
     # Priority 3: article hero image
     hero_selectors = [
@@ -120,7 +129,7 @@ def extract_article_image_url(soup: BeautifulSoup, page_url: str) -> str:
             if src:
                 abs_url = urllib.parse.urljoin(page_url, src.strip())
                 if abs_url.startswith("http") and any(ext in abs_url.lower() for ext in [".jpg", ".jpeg", ".png", ".webp"]):
-                    return abs_url
+                    return _ensure_https(abs_url)
 
     # Priority 4: first valid article image
     for img in soup.select("article img, main img, body img"):
@@ -135,7 +144,7 @@ def extract_article_image_url(soup: BeautifulSoup, page_url: str) -> str:
                 continue
             if height and str(height).isdigit() and int(height) < 100:
                 continue
-            return abs_url
+            return _ensure_https(abs_url)
 
     return ""
 
@@ -177,6 +186,7 @@ def _scrape_firecrawl(url: str, max_content_length: int = 30000) -> dict:
             if img_match:
                 article_img = img_match.group(1)
 
+        article_img = _ensure_https(article_img)
         images = [article_img] if article_img else []
         links = fc_data.get("links", [])[:20]
 
@@ -228,6 +238,8 @@ def _scrape_jina(url: str, max_content_length: int = 30000) -> dict:
         img_match = re.search(r"!\[.*?\]\((https?://[^\s\)]+)\)", content)
         if img_match:
             article_img = img_match.group(1)
+
+        article_img = _ensure_https(article_img)
 
         return {
             "status": "success",
