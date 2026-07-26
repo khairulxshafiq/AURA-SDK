@@ -843,6 +843,29 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
 
+    elif data in ["hashtag_on", "hashtag_off"]:
+        with_hashtags = (data == "hashtag_on")
+        state_data["hashtags"] = with_hashtags
+        options = state_data.get("options", {})
+        options["hashtags"] = with_hashtags
+        options["with_hashtags"] = with_hashtags
+        state_data["options"] = options
+        draft_repo.update_draft_state(user_id, json.dumps(state_data))
+
+        # Always refresh Telegram preview immediately after toggle
+        reply_markup = _get_sub_options_keyboard(state_data)
+        try:
+            await query.edit_message_reply_markup(reply_markup=reply_markup)
+        except Exception as e:
+            logger.warning(f"Failed to edit reply markup for hashtag toggle: {e}")
+
+        # Regenerate preview immediately if drafts already generated
+        selected = state_data.get("selected", [])
+        if selected and draft.get("platform_draft"):
+            status_text = "🔄 Mengemaskini pratonton (Dengan Hashtag)..." if with_hashtags else "🔄 Mengemaskini pratonton (Tanpa Hashtag)..."
+            await query.message.reply_text(status_text)
+            await _generate_all_platform_drafts(user_id, chat_id, selected, options, draft, context, query.message)
+
     elif data == "sub_next":
         selected = state_data.get("selected", [])
         options = state_data.get("options", {})

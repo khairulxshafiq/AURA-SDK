@@ -1,5 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 import storage.location_repository as location_repo
+from ui.keyboard_validator import validate_inline_keyboard
 
 def _get_direct_confirm_keyboard(platform_drafts: list) -> InlineKeyboardMarkup:
     keyboard = []
@@ -7,7 +8,9 @@ def _get_direct_confirm_keyboard(platform_drafts: list) -> InlineKeyboardMarkup:
         keyboard.append([
             InlineKeyboardButton(f"✅ Confirm & Post {plat.upper()}", callback_data=f"confirm_platform:{plat}")
         ])
-    return InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup(keyboard)
+    validate_inline_keyboard(markup)
+    return markup
 
 def _get_platform_keyboard(state_data: dict) -> InlineKeyboardMarkup:
     selected = state_data.get("selected", [])
@@ -31,13 +34,22 @@ def _get_platform_keyboard(state_data: dict) -> InlineKeyboardMarkup:
         keyboard.append(row)
 
     keyboard.append([InlineKeyboardButton("Next ➡️", callback_data="platform_next")])
-    return InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup(keyboard)
+    validate_inline_keyboard(markup)
+    return markup
 
 def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
     selected = state_data.get("selected", [])
     options = state_data.get("options", {})
+    curr_hashtags = state_data.get("hashtags", options.get("with_hashtags", options.get("hashtags", True)))
 
     keyboard = []
+
+    # Hashtag toggle row: hashtag_on and hashtag_off
+    keyboard.append([
+        InlineKeyboardButton(f"{'✅ ' if curr_hashtags else '⬜ '}Dengan Hashtag #️⃣", callback_data="hashtag_on"),
+        InlineKeyboardButton(f"{'🚫 ' if not curr_hashtags else '⬜ '}Tanpa Hashtag", callback_data="hashtag_off")
+    ])
 
     if "facebook" in selected:
         curr_fb = options.get("facebook", "viral_santai")
@@ -94,7 +106,9 @@ def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
         ])
 
     keyboard.append([InlineKeyboardButton("Generate Drafts ⚡", callback_data="sub_next")])
-    return InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup(keyboard)
+    validate_inline_keyboard(markup)
+    return markup
 
 def _get_gnews_keyboard() -> InlineKeyboardMarkup:
     keyboard = [
@@ -111,7 +125,9 @@ def _get_gnews_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton("⚡ Isu Semasa", callback_data="gnews_cat:nasional")
         ]
     ]
-    return InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup(keyboard)
+    validate_inline_keyboard(markup)
+    return markup
 
 def _get_viral_confessions_keyboard(offset: int = 0) -> InlineKeyboardMarkup:
     next_offset = offset + 6
@@ -121,7 +137,9 @@ def _get_viral_confessions_keyboard(offset: int = 0) -> InlineKeyboardMarkup:
             InlineKeyboardButton("◀️ Back Ke Menu News", callback_data="gnews_back")
         ]
     ]
-    return InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup(keyboard)
+    validate_inline_keyboard(markup)
+    return markup
 
 def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float) -> InlineKeyboardMarkup:
     places = location_repo.get_user_places(user_id)
@@ -163,4 +181,6 @@ def _get_location_keyboard(user_id: int, current_lat: float, current_lon: float)
         ]
     ]
 
-    return InlineKeyboardMarkup(keyboard)
+    markup = InlineKeyboardMarkup(keyboard)
+    validate_inline_keyboard(markup)
+    return markup

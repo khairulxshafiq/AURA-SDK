@@ -32,6 +32,10 @@ def _send_safe_message(text: str, max_length: int = 4000) -> str:
 
 async def _send_telegram_msg(update: Update, text: str, parse_mode: str = None, reply_markup=None, disable_preview: bool = False):
     """Send Telegram message with markdown/HTML support, automatically falling back to plain text if parsing fails."""
+    if reply_markup and hasattr(reply_markup, "inline_keyboard"):
+        from ui.keyboard_validator import validate_inline_keyboard
+        validate_inline_keyboard(reply_markup)
+
     target_parse_mode = parse_mode
     target_text = text
 
