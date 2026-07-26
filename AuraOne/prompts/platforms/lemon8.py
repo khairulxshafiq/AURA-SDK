@@ -15,13 +15,9 @@ PERATURAN AM (Lemon8):
 """
 
 
-def build_lemon8_prompt(style: str, raw_content: str, with_hashtags: bool = True, seed=None) -> tuple[str, str]:
+def build_lemon8_prompt(style: str, raw_content: str, seed=None) -> tuple[str, str]:
     """Bina prompt (system, user) untuk Lemon8."""
-    if with_hashtags:
-        tags = get_hashtags("lemon8", count=2, seed=seed)
-        hashtag_instruction = f"Akhiri post dengan 1 baris kosong dan hashtag ini: {tags}."
-    else:
-        hashtag_instruction = "PERATURAN HASHTAG (OFF): DILARANG SAMA SEKALI meletakkan sebarang hashtag (#) dalam hantaran ini."
+    tags = get_hashtags("lemon8", count=2, seed=seed)
 
     system_prompt = f"""Kau ialah pencipta kandungan Lemon8 profesional.
 TUGAS: Olah INPUT menjadi hantaran Lemon8 yang estetik, informatif, dan mesra pembaca.
@@ -32,6 +28,6 @@ TUGAS: Olah INPUT menjadi hantaran Lemon8 yang estetik, informatif, dan mesra pe
 {raw_content}
 
 Hasilkan hantaran Lemon8 berasaskan bahan di atas.
-{hashtag_instruction}"""
+Akhiri post dengan 1 baris kosong dan hashtag ini: {tags}."""
 
     return system_prompt, user_prompt

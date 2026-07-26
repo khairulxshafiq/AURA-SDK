@@ -325,12 +325,8 @@ async def stage_image_telegram(context, telegram_file_id: str) -> str:
     return ""
 
 async def _prepare_drive_image_for_airtable(image_url: str, telegram_file_id: str, counter: int, context) -> str:
-    """Generate Telegram Direct CDN File Link for Airtable attachment ingestion, with fallback to raw image_url."""
-    if telegram_file_id:
-        tg_url = await stage_image_telegram(context, telegram_file_id)
-        if tg_url:
-            return tg_url
-    return image_url or ""
+    """Generate Telegram Direct CDN File Link for Airtable attachment ingestion."""
+    return await stage_image_telegram(context, telegram_file_id)
 
 def push_image_to_airtable(
     tg_cdn_url: str,

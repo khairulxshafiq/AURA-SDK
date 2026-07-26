@@ -28,7 +28,7 @@ from prompts.platforms.threads import build_threads_prompt, THREAD_COUNTS, THREA
 from prompts.platforms.x import build_x_prompt
 from prompts.platforms.lemon8 import build_lemon8_prompt
 from prompts.modifiers.length import enforce_fb_length_limits, get_length_instruction
-from prompts.shared.hashtags import get_hashtags, sanitize_hashtags, strip_hashtags, SAKLUMA_HASHTAGS, SAKLUMA_POOL
+from prompts.shared.hashtags import get_hashtags, sanitize_hashtags, SAKLUMA_HASHTAGS, SAKLUMA_POOL
 
 SUPPORTED_PLATFORMS = ["facebook", "fb", "threads", "x", "twitter", "lemon8"]
 
@@ -39,7 +39,6 @@ def build_prompt(
     length: str = "panjang",
     count: str | int = "5",
     show_title: bool = False,
-    with_hashtags: bool = True,
     raw_content: str = "",
     seed=None
 ) -> tuple[str, str]:
@@ -53,21 +52,21 @@ def build_prompt(
 
     if plat in ["facebook", "fb"]:
         st = style or "viral_santai"
-        return build_facebook_prompt(style=st, raw_content=master_article, length=length, show_title=show_title, with_hashtags=with_hashtags, seed=seed)
+        return build_facebook_prompt(style=st, raw_content=master_article, length=length, show_title=show_title, seed=seed)
     
     elif plat == "threads":
         st = style or "genz"
         ct = str(count) if count else "5"
-        return build_threads_prompt(style=st, count=ct, raw_content=master_article, with_hashtags=with_hashtags, seed=seed)
+        return build_threads_prompt(style=st, count=ct, raw_content=master_article, seed=seed)
     
     elif plat in ["x", "twitter"]:
         st = style or "genz"
         ct = str(count) if count else "1"
-        return build_x_prompt(style=st, count=ct, raw_content=master_article, with_hashtags=with_hashtags, seed=seed)
+        return build_x_prompt(style=st, count=ct, raw_content=master_article, seed=seed)
     
     elif plat == "lemon8":
         st = style or "estetik"
-        return build_lemon8_prompt(style=st, raw_content=master_article, with_hashtags=with_hashtags, seed=seed)
+        return build_lemon8_prompt(style=st, raw_content=master_article, seed=seed)
     
     else:
         valid = ", ".join(f"'{p}'" for p in ["facebook", "threads", "x", "lemon8"])
@@ -79,7 +78,6 @@ __all__ = [
     "get_length_instruction",
     "get_hashtags",
     "sanitize_hashtags",
-    "strip_hashtags",
     "FB_PERSONAS",
     "THREAD_COUNTS",
     "THREADS_STYLES",

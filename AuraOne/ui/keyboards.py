@@ -93,12 +93,6 @@ def _get_sub_options_keyboard(state_data: dict) -> InlineKeyboardMarkup:
             InlineKeyboardButton(f"{'✅ ' if curr_len == 8 else '⬜ '}8 Bebenang", callback_data="sub:thread_len:8")
         ])
 
-    curr_with_hashtags = options.get("with_hashtags", True)
-    keyboard.append([
-        InlineKeyboardButton(f"{'✅ ' if curr_with_hashtags else '⬜ '}Dengan Hashtag #️⃣", callback_data="sub:with_hashtags:true"),
-        InlineKeyboardButton(f"{'✅ ' if not curr_with_hashtags else '⬜ '}Tanpa Hashtag 🚫", callback_data="sub:with_hashtags:false")
-    ])
-
     keyboard.append([InlineKeyboardButton("Generate Drafts ⚡", callback_data="sub_next")])
     return InlineKeyboardMarkup(keyboard)
 

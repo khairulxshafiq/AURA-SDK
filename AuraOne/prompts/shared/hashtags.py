@@ -66,14 +66,3 @@ def sanitize_hashtags(text: str) -> str:
     cleaned = pattern.sub("", text)
     cleaned = re.sub(r"[ \t]+", " ", cleaned)
     return cleaned.strip()
-
-def strip_hashtags(text: str) -> str:
-    """Strip all hashtags (words starting with #) from text."""
-    if not text:
-        return ""
-    cleaned = re.sub(r"#\w+", "", text)
-    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in cleaned.split("\n")]
-    while lines and not lines[-1]:
-        lines.pop()
-    return "\n".join(lines)
-
