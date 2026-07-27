@@ -9,10 +9,16 @@ services:
     restart: unless-stopped
     env_file:
       - AuraOne/.env
+    environment:
+      - AMIRA_SERVICE_URL=http://amira-app:8001
+      - ADELIA_SERVICE_URL=http://adelia-app:8002
     volumes:
       - aura-db-data:/app/AuraOne/storage
       - ./AuraOne/dumps:/app/AuraOne/dumps
       - ./AuraOne/images:/app/AuraOne/images
+    depends_on:
+      - amira-app
+      - adelia-app
     networks:
       - aura-net
     healthcheck:
@@ -21,6 +27,44 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+  amira-app:
+    build:
+      context: ./amira-app
+      dockerfile: Dockerfile
+    container_name: amira-app
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    env_file:
+      - AuraOne/.env
+    networks:
+      - aura-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+  adelia-app:
+    build:
+      context: ./adelia-app
+      dockerfile: Dockerfile
+    container_name: adelia-app
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    env_file:
+      - AuraOne/.env
+    networks:
+      - aura-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
 
 volumes:
   aura-db-data:

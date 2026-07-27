@@ -1,8 +1,18 @@
 # LUMA Memory & Progress Tracking
 
-## 📅 Last Updated: 2026-07-26
+## 📅 Last Updated: 2026-07-27
 
 ---
+
+## 🚀 Recent Architecture Audit & Fixes (2026-07-27)
+* **AURA Multi-Agent Microservices Revamp (Strangler Fig Pattern)**: Successfully decoupled the AURA monolith into 3 isolated Docker microservices following the Strangler Fig migration pattern:
+  - **`aura-router`**: Master Gateway, Telegram UI Handlers, Intent Router, & Supervisor Orchestrator.
+  - **`amira-app`**: Decoupled Trading Microservice (FastAPI on port 8001, Bursa Malaysia / ASB / Swing Trading Crew, yfinance indicators, advisory-only guardrail).
+  - **`adelia-app`**: Decoupled Content Microservice (FastAPI on port 8002, 3-tier web scraping, GNews/Search, multi-platform persona rewriter, Airtable publisher).
+* **Frozen Package Verification & AGENTS.md Branching Compliance**: Verified and locked `google-genai==2.14.0` as the exact working SDK package across all Dockerfiles and `requirements.txt` files. Executed all phase changes on dedicated feature branch `feature/multi-agent-microservices-2026-07-27` with clean isolated commits per phase.
+* **Advisory-Only Hard Guardrail Enforced**: Verified that `amira-app` trading microservice includes hard disclaimers ("AMIRA BUKAN advisor automatik buy/sell & tidak execute trade") across all trade plan endpoints and SKILL.md specs.
+* **Automated Integration & Microservice Test Suite**: Created `test_microservices.py` testing endpoints across all 3 microservices (7/7 tests passing 100%) alongside existing 13/13 unit tests.
+
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-26)
 * **Single Source of Truth Memory Consolidation**: Removed duplicate `AuraOne/LUMA_MEMORY.md` file. Consolidated project-wide memory and progress tracking exclusively into project root `LUMA_MEMORY.md`.
