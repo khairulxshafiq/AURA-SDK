@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  aura-router:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aura-router
+    restart: unless-stopped
+    env_file:
+      - AuraOne/.env
+    volumes:
+      - aura-db-data:/app/AuraOne/storage
+      - ./AuraOne/dumps:/app/AuraOne/dumps
+      - ./AuraOne/images:/app/AuraOne/images
+    networks:
+      - aura-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import storage.db; print(\"OK\")' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  aura-db-data:
+
+networks:
+  aura-net:
+    driver: bridge
