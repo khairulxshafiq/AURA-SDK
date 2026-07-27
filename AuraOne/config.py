@@ -13,7 +13,21 @@ logging.basicConfig(
 logger = logging.getLogger("aura.config")
 
 # ─── Directories & Paths ──────────────────────────────────────────────────────
+# ─── Directories & Paths ──────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# New storage root for containerized persistence (mounted as /app/storage)
+STORAGE_ROOT = os.getenv("STORAGE_ROOT", os.path.join(BASE_DIR, "storage"))
+SESSIONS_DIR = os.path.join(STORAGE_ROOT, "sessions")
+SKILLS_DIR = os.path.join(BASE_DIR, "skills")
+PERSONA_PATH = os.path.join(BASE_DIR, "persona.txt")
+SESSION_MAP_PATH = os.path.join(SESSIONS_DIR, "user_session_map.json")
+# Primary DB path (container path)
+DB_PATH = os.path.join(SESSIONS_DIR, "aura_memory.db")
+# Backward compatibility for legacy scripts expecting sessions under BASE_DIR
+LEGACY_SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
+# Ensure both directories exist
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+os.makedirs(LEGACY_SESSIONS_DIR, exist_ok=True)
 SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
 SKILLS_DIR = os.path.join(BASE_DIR, "skills")
 PERSONA_PATH = os.path.join(BASE_DIR, "persona.txt")
