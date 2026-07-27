@@ -43,6 +43,11 @@ FIRECRAWL_TIMEOUT_MS = int(os.environ.get("FIRECRAWL_TIMEOUT_MS", "30000"))
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
+# ─── Microservices Service URLs ────────────────────────────────────────────────
+AMIRA_SERVICE_URL = os.environ.get("AMIRA_SERVICE_URL", "").rstrip("/")
+ADELIA_SERVICE_URL = os.environ.get("ADELIA_SERVICE_URL", "").rstrip("/")
+
+
 # ─── Google Drive Storage Config ─────────────────────────────────────────────
 def _extract_gdrive_folder_id(val: str, default_id: str) -> str:
     if not val:
