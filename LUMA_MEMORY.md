@@ -4,6 +4,75 @@
 
 ---
 
+## 🤖 Phase 2 — AMIRA Trading Swarm (2026-07-27) [PENDING REVIEW]
+
+**Branch:** `feature/phase2-amira-swarm-2026-07-27`
+**PR:** "Phase 2: AMIRA trading swarm" — awaiting owner approval before merge to main.
+
+### What was built (Prompts 5–15)
+| Prompt | Deliverable | Commit |
+|---|---|---|
+| P5 | `amira/` directory scaffold (`core/`, `swarm/`, `tools/`, `data/`, `schemas/`, `tests/`) | scaffold |
+| P6 | `amira/requirements.txt` — pinned deps (`google-genai==2.14.0`, `pandas-ta==0.4.71b0`, etc.) | deps |
+| P7 | `amira/schemas/models.py` — `TradeAnalysisRequest` / `TradeAnalysisResponse` + advisory validator | schemas |
+| P8 | `amira/core/memory.py` — `HermesMemoryEngine` (isolated SQLite at `amira/data/hermes_memory.db`) | memory |
+| P9 | `amira/tools/market_data.py` — `fetch_ohlcv()` with market mapping, caching, typed error | market_data |
+| P10 | `amira/tools/indicators.py` — `compute_indicators()` RSI-14, ATR-14, MA-20/50/200 via pandas-ta | `a5dbfde` |
+| P11 | `amira/tools/fundamentals.py` + `amira/swarm/agents.py` — `FundamentalSentimentAgent` (FA+sentiment) | `4125e48` |
+| P12 | `amira/swarm/risk_officer.py` — `RiskOfficerAgent` (ATR stop-loss, position sizing, final veto) | `72a5e0b` |
+| P13 | `amira/swarm/crew.py` — `run_trading_crew()` sequential pipeline (TA→FA/Sent→Risk Officer) | `1a35510` |
+| P14 | `amira/main.py` — FastAPI AMIRA Trading Engine (`GET /health`, `POST /api/v1/analyze`) | `d5fc351` |
+| P15 | `amira/Dockerfile` + `docker-compose.yml` `amira-app` service (internal-net, no public ports) | `ac0aecb` |
+
+### Advisory guardrail enforcement (3 layers)
+1. `TradeAnalysisResponse.verdict` `field_validator` — blocks SELL/EXECUTE/ORDER at model init
+2. `RiskReport` `model_validator` — non-empty disclaimer is mandatory on every response
+3. HTTP 500 `advisory_violation` code — catches any guardrail breach before it leaves the API
+
+### Test coverage
+| Suite | Tests | Runtime |
+|---|---|---|
+| `test_indicators.py` | 2 | 24.74 s (pandas-ta JIT) |
+| `test_agents.py` | 8 | 1.61 s |
+| `test_risk_officer.py` | 31 | 0.27 s |
+| `test_crew.py` | 13 | 3.93 s |
+| `test_main.py` | 17 | 4.58 s |
+| **Total** | **71** | |
+
+### Docker stack (⚠️ manual verification required — Docker not available on dev machine)
+The following manual checks must be run on a Docker-capable host before approving the PR:
+```bash
+# 1. Build & bring up
+cp amira/.env.example amira/.env   # fill in values first
+docker compose up -d --build
+
+# 2. Health check
+curl http://localhost:8000/health   # only if port temporarily exposed for testing
+
+# 3. Advisory verdicts (MY, US, INDEX)
+curl -X POST http://amira-app:8000/api/v1/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"1155","user_prompt":"Maybank?","market":"MY"}'
+# repeat for US (AAPL) and INDEX (^GSPC)
+
+# 4. Hermes persistence across restart
+docker compose restart amira-app
+# re-POST same symbol → should return memory_context with prior advisory
+
+# 5. Isolation: AURA still works when AMIRA is down
+docker stop amira-app
+# send Telegram message → AURA chat + content pipelines must respond normally
+# trading tools should log warning and gracefully degrade (no crash)
+
+# 6. AMIRA keys not in aura-app
+docker exec aura-app env | grep -i amira
+# must return nothing (AMIRA_* vars live only in amira-app via amira/.env)
+```
+
+---
+
+
+
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-27)
 * **AURA Multi-Agent Microservices Revamp (Strangler Fig Pattern)**: Successfully decoupled the AURA monolith into 3 isolated Docker microservices following the Strangler Fig migration pattern:
   - **`aura-router`**: Master Gateway, Telegram UI Handlers, Intent Router, & Supervisor Orchestrator.
