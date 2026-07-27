@@ -4,9 +4,25 @@ import urllib.parse
 import logging
 import httpx
 from bs4 import BeautifulSoup
-from config import FIRECRAWL_API_KEY, FIRECRAWL_ENABLED, FIRECRAWL_TIMEOUT_MS
+from config import FIRECRAWL_API_KEY, FIRECRAWL_ENABLED, FIRECRAWL_TIMEOUT_MS, ADELIA_SERVICE_URL
 
 logger = logging.getLogger("aura.tools.web_scraper")
+
+def _delegate_to_adelia(endpoint: str, payload: dict) -> dict | None:
+    """Delegate web scraping requests to ADELIA microservice if configured."""
+    if not ADELIA_SERVICE_URL:
+        return None
+    try:
+        url = f"{ADELIA_SERVICE_URL}{endpoint}"
+        resp = httpx.post(url, json=payload, timeout=25.0)
+        if resp.status_code == 200:
+            logger.info(f"Successfully delegated scrape request to ADELIA microservice: {endpoint}")
+            return resp.json()
+        logger.warning(f"ADELIA service returned status {resp.status_code} for {endpoint}")
+    except Exception as e:
+        logger.warning(f"Failed to delegate to ADELIA microservice ({endpoint}): {e}")
+    return None
+
 
 FIRECRAWL_BASE = "https://api.firecrawl.dev/v1"
 JINA_READER_BASE = "https://r.jina.ai"
@@ -343,7 +359,12 @@ def scrape_url(url: str, max_content_length: int = 30000) -> dict:
     """Scrape a web page URL and return its title, main content, images, and links.
     Automatically resolves GNews redirects, then tries Firecrawl -> Jina -> Native fallback.
     """
+    remote = _delegate_to_adelia("/api/v1/content/scrape", {"url": url, "max_length": max_content_length})
+    if remote:
+        return remote
+
     resolved_target_url = resolve_gnews_url(url)
+
 
     # TIER 1: Try Firecrawl first (if enabled)
     if FIRECRAWL_ENABLED and FIRECRAWL_API_KEY:
