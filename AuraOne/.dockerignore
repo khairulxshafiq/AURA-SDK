@@ -1,0 +1,19 @@
+# Exclude virtual environment
+.venv/
+# Python bytecode caches
+__pycache__/
+*.pyc
+# Sensitive env vars
+.env
+# Runtime data
+sessions/
+images/
+(dumps/)
+# Backup files
+*.bak
+# Git metadata (not needed in container)
+.git/
+# SQLite journal files
+*.db-journal
+# Local cache directories
+.cache/
