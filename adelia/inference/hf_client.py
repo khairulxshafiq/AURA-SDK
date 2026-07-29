@@ -35,23 +35,14 @@ _DEFAULT_TIMEOUT = 60
 _MAX_RETRIES = 1
 
 
-# ── Typed exceptions ──────────────────────────────────────────────────
+# ── Typed exceptions (imported from standalone module for light imports) ──
 
-
-class HFDisabled(RuntimeError):
-    """Raised when USE_HF_INFERENCE is false — callers should fall back."""
-
-
-class HFCreditsExhausted(RuntimeError):
-    """Raised on HTTP 402 — inference credits depleted."""
-
-
-class HFTokenForbidden(PermissionError):
-    """Raised on HTTP 403 — token lacks required permissions."""
-
-
-class HFInferenceError(RuntimeError):
-    """Generic wrapper for unexpected HF Inference API errors."""
+from adelia.inference.exceptions import (
+    HFCreditsExhausted,
+    HFDisabled,
+    HFInferenceError,
+    HFTokenForbidden,
+)
 
 
 # ── Client ─────────────────────────────────────────────────────────────
