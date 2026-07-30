@@ -25,8 +25,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY adelia/ ./adelia/
 
 # ---------- Set environment & non-root user ----------
+RUN mkdir -p /app/adelia/data && chown -R appuser:appuser /app/adelia
 ENV PYTHONPATH=/app
-# USER appuser
+USER appuser
 
 # ---------- Entrypoint ----------
 # Bound to 0.0.0.0:8001 inside container (internal network only)
