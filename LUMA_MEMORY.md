@@ -74,6 +74,17 @@ docker exec aura-app env | grep -i amira
 **Branch:** `feature/phase3-adelia-swarm-2026-07-27`
 **PR:** "Phase 3: ADELIA content swarm + Hugging Face inference" — awaiting owner approval before merge to main.
 
+### Architecture Highlights
+- **Microservice Extraction**: ADELIA extracted to standalone `adelia-app` microservice running FastAPI on port 8001 inside Docker `internal-net` (no public port exposure).
+- **Hugging Face Inference (C) Full**:
+  - `BAAI/bge-m3`: 1024-dim dense embedding vectors for semantic content memory & deduplication (`dedup_check`).
+  - `facebook/bart-large-mnli`: Zero-shot NLI classifier for automated FB persona routing (`suggest_fb_persona`).
+  - `black-forest-labs/FLUX.1-schnell`: Image generation fallback hook when article image is missing.
+- **Vector Memory Layer**: `sqlite-vec` (`vec0` virtual table with brute-force cosine fallback for non-extension SQLite builds) stored at `adelia/data/adelia_memory.db`.
+- **Kill-Switches & Fail-safes (Both Default False)**:
+  - `USE_ADELIA_SERVICE` (default `False`): Controls whether AURA routes publishing/generation to `adelia-app` or falls back to in-process path.
+  - `USE_HF_INFERENCE` (default `False`): Controls whether HF inference features run or return graceful pass-throughs, ensuring non-blocking execution.
+
 ### What was built
 | Phase Step | Component | Description |
 |---|---|---|

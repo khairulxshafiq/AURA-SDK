@@ -62,6 +62,44 @@ AURA is designed to support the following key capabilities (located in `AuraOne/
    * Flux Schnell image generation via Replicate API for visual posts.
 6. **Trading & Market Analysis (`trading_tools.md`)**
    * Stock indicators querying (yfinance), technical trend calculations (RSI, SMA), and multi-agent trading analysis.
+---
+
+## ⚡ ADELIA Content Engine Microservice
+
+**ADELIA** is an isolated, serverless microservice extracted from AURA to handle multi-platform content generation, Hugging Face AI inference, semantic vector memory, zero-shot persona routing, and Airtable/Google Drive publishing.
+
+### Microservice Specs
+* **Port & Network**: Runs as container `adelia-app` on port `8001` inside Docker `internal-net` (no public port exposure).
+* **API Framework**: FastAPI with Pydantic validation contracts.
+* **Vector Store**: `sqlite-vec` (`vec0` virtual table + brute-force cosine fallback) at `adelia/data/adelia_memory.db`.
+
+### API Endpoints
+| Method | Endpoint | Description | Payload / Response |
+|---|---|---|---|
+| `GET` | `/health` | Health report (HF reachability, sqlite-vec status) | Returns JSON status report |
+| `POST` | `/api/v1/generate-master` | Generates neutral Master Article | `{"scraped_text": "...", "title": "...", "source_url": "..."}` |
+| `POST` | `/api/v1/generate-content` | Rewrites master article to platform drafts | `{"master_article": "...", "platforms": ["facebook", "threads"]}` |
+| `POST` | `/api/v1/publish` | Pushes draft to Airtable Content Station & GDrive | `{"draft": {"platform": "...", "caption": "...", "image_url": "..."}}` |
+| `POST` | `/api/v1/recall` | Semantic vector search of past content | `{"query_text": "digital economy", "k": 5}` |
+
+### Environment Variables (`adelia/.env`)
+* `HF_TOKEN`: Hugging Face API token for serverless inference.
+* `HF_EMBED_MODEL`: Dense embedding model (`BAAI/bge-m3`).
+* `HF_ZEROSHOT_MODEL`: Zero-shot classifier (`facebook/bart-large-mnli`).
+* `HF_IMAGE_MODEL`: Text-to-image generator (`black-forest-labs/FLUX.1-schnell`).
+* `USE_HF_INFERENCE`: Flag to enable HF inference features (`true`/`false`).
+* `GEMINI_API_KEY` / `GEMINI_API_KEY_1..5`: Primary Gemini LLM keys.
+* `OPENROUTER_API_KEY`: OpenRouter proxy fallback key.
+* `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`, `AIRTABLE_TABLE_NAME`: Airtable Content Station PAT & Base ID.
+* `GDRIVE_IMAGE_FOLDER_ID`, `GDRIVE_DUMP_FOLDER_ID`, `GOOGLE_SERVICE_ACCOUNT_JSON`: Google Drive storage folder IDs & Service Account JSON.
+
+### Fail-Safes & Kill-Switches (Both Default `False`)
+1. **`USE_ADELIA_SERVICE`** (default `False` in AURA):
+   - Set to `true` in `AuraOne/.env` to route publishing/generation to `http://adelia-app:8001`.
+   - Set to `false` for instant zero-downtime rollback to AURA's in-process draft pipeline.
+2. **`USE_HF_INFERENCE`** (default `False` in ADELIA):
+   - Set to `true` in `adelia/.env` to enable semantic memory, zero-shot persona routing, and FLUX synthetic image fallback.
+   - Set to `false` to disable HF calls gracefully without blocking content generation.
 
 
 ---
