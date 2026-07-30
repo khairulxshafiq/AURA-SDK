@@ -14,6 +14,8 @@ import storage.draft_repository as draft_repo
 from tools.publisher_service import save_draft_to_airtable, _prepare_drive_image_for_airtable
 from ui.formatters import _send_telegram_msg
 from pipelines.llm_caller import call_llm
+from config import USE_ADELIA_SERVICE
+import tools.adelia_client as adelia_client
 
 logger = logging.getLogger("aura.pipelines.draft_pipeline")
 
@@ -165,15 +167,44 @@ async def confirm_platform_push(user_id: int, draft: dict, plat_to_confirm: str,
     if target_airtable_img and target_airtable_img.startswith("http://"):
         target_airtable_img = "https://" + target_airtable_img[7:]
 
-    res = save_draft_to_airtable(
-        title=draft["title"],
-        caption=specific_draft,
-        platform=plat_to_confirm,
-        source_url=draft["source_url"],
-        image_url=target_airtable_img,
-        status="Draft",
-        hashtags=draft["hashtags"]
-    )
+    # Microservice routing vs In-process fallback
+    if USE_ADELIA_SERVICE:
+        logger.info("[DraftPipeline] Routing confirm & push to ADELIA microservice...")
+        draft_payload = {
+            "platform": plat_to_confirm,
+            "caption": specific_draft,
+            "image_url": target_airtable_img,
+        }
+        extra_fields = {
+            "title": draft["title"],
+            "source_url": draft.get("source_url", ""),
+            "hashtags": draft.get("hashtags", ""),
+            "status": "Draft",
+        }
+        try:
+            pub_res = await adelia_client.publish(draft=draft_payload, content_type="Post", extra_fields=extra_fields)
+            res = {"status": "success" if pub_res.get("status") in ["published", "queued"] else "error", "error": pub_res.get("error")}
+        except Exception as exc:
+            logger.error(f"[DraftPipeline] ADELIA publish failed, falling back to in-process path: {exc}")
+            res = save_draft_to_airtable(
+                title=draft["title"],
+                caption=specific_draft,
+                platform=plat_to_confirm,
+                source_url=draft["source_url"],
+                image_url=target_airtable_img,
+                status="Draft",
+                hashtags=draft["hashtags"]
+            )
+    else:
+        res = save_draft_to_airtable(
+            title=draft["title"],
+            caption=specific_draft,
+            platform=plat_to_confirm,
+            source_url=draft["source_url"],
+            image_url=target_airtable_img,
+            status="Draft",
+            hashtags=draft["hashtags"]
+        )
 
     if res["status"] == "success":
         draft_repo.clear_draft(user_id)
@@ -224,15 +255,44 @@ async def handle_confirm_command(update, context):
     except Exception:
         pass
 
-    res = save_draft_to_airtable(
-        title=title,
-        caption=specific_draft,
-        platform=selected_platform,
-        source_url=source_url,
-        image_url=final_image_url,
-        status="Draft",
-        hashtags=hashtags
-    )
+    # Microservice routing vs In-process fallback
+    if USE_ADELIA_SERVICE:
+        logger.info("[DraftPipeline] Routing /confirm command to ADELIA microservice...")
+        draft_payload = {
+            "platform": selected_platform,
+            "caption": specific_draft,
+            "image_url": final_image_url,
+        }
+        extra_fields = {
+            "title": title,
+            "source_url": source_url,
+            "hashtags": hashtags,
+            "status": "Draft",
+        }
+        try:
+            pub_res = await adelia_client.publish(draft=draft_payload, content_type="Post", extra_fields=extra_fields)
+            res = {"status": "success" if pub_res.get("status") in ["published", "queued"] else "error", "error": pub_res.get("error")}
+        except Exception as exc:
+            logger.error(f"[DraftPipeline] ADELIA publish failed, falling back to in-process path: {exc}")
+            res = save_draft_to_airtable(
+                title=title,
+                caption=specific_draft,
+                platform=selected_platform,
+                source_url=source_url,
+                image_url=final_image_url,
+                status="Draft",
+                hashtags=hashtags
+            )
+    else:
+        res = save_draft_to_airtable(
+            title=title,
+            caption=specific_draft,
+            platform=selected_platform,
+            source_url=source_url,
+            image_url=final_image_url,
+            status="Draft",
+            hashtags=hashtags
+        )
 
     if res["status"] == "success":
         draft_repo.clear_draft(user_id)

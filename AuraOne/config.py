@@ -59,7 +59,8 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 
 # ─── Microservices Service URLs ────────────────────────────────────────────────
 AMIRA_SERVICE_URL = os.environ.get("AMIRA_SERVICE_URL", "").rstrip("/")
-ADELIA_SERVICE_URL = os.environ.get("ADELIA_SERVICE_URL", "").rstrip("/")
+ADELIA_SERVICE_URL = os.environ.get("ADELIA_SERVICE_URL", "http://adelia-app:8001").rstrip("/")
+USE_ADELIA_SERVICE = os.environ.get("USE_ADELIA_SERVICE", "false").lower() == "true"
 
 
 # ─── Google Drive Storage Config ─────────────────────────────────────────────
