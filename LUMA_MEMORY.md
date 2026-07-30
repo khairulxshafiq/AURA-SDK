@@ -1,6 +1,6 @@
 # LUMA Memory & Progress Tracking
 
-## 📅 Last Updated: 2026-07-27
+## 📅 Last Updated: 2026-07-30
 
 ---
 
@@ -68,6 +68,37 @@ docker stop amira-app
 docker exec aura-app env | grep -i amira
 # must return nothing (AMIRA_* vars live only in amira-app via amira/.env)
 ```
+
+## 🤖 Phase 3 — ADELIA Content Swarm & Hugging Face Inference (2026-07-30) [PENDING REVIEW]
+
+**Branch:** `feature/phase3-adelia-swarm-2026-07-27`
+**PR:** "Phase 3: ADELIA content swarm + Hugging Face inference" — awaiting owner approval before merge to main.
+
+### What was built
+| Phase Step | Component | Description |
+|---|---|---|
+| P1–P2 | Read-Only Audit & Scaffold | Created `adelia/` directory structure (`core/`, `personas/`, `publishers/`, `prompts/`, `schemas/`, `llm/`, `inference/`, `memory/`, `data/`, `tests/`) |
+| P3 | Pinned Dependencies | Created `adelia/requirements.txt` with serverless prebuilt wheels (NO torch, NO transformers, NO crewai) |
+| P4 | Data Contracts | Created `adelia/schemas/models.py` (`ContentRequest`, `PlatformDraft`, `ContentResponse`, `PublishRequest`, `PublishResponse`, `MemoryHit`) |
+| P5 | Serverless HF Inference | Created `adelia/inference/hf_client.py` (`bge-m3` embedding, `bart-large-mnli` zero-shot, `FLUX.1-schnell` image gen) + typed exceptions |
+| P6 | Vector Memory Store | Created `adelia/memory/vector_store.py` (`ContentVectorStore` with `sqlite-vec` `vec0` + brute-force cosine fallback) |
+| P7 | Semantic Memory | Created `adelia/memory/content_memory.py` (`remember`, `recall`, `dedup_check`) |
+| P8 | Persona Router | Created `adelia/personas/persona_router.py` (zero-shot FB persona classifier: `berita`, `pemerhati`, `kedai_kopi`, `viral_santai`, `makcik_bawang`, `kisah_inspirasi`, `borak_kawan`) |
+| P9 | Self-Contained LLM Caller | Created `adelia/llm/llm_caller.py` (Gemini key rotation + OpenRouter fallback + 10-min cooldown tracking) |
+| P10 | Prompt Engine & Parity | Ported prompt engine & persona prompts (`facebook`, `threads`, `x`, `lemon8`) + `borak_kawan` (Sempurna Coffee Talk, 50-120 words) |
+| P11 | Master Article Generator | Created `adelia/core/master_article.py` (`generate_master_article` pure I/O) |
+| P12 | Social Engine Draft Generator | Created `adelia/core/social_engine.py` (`generate_platform_drafts` pure I/O, text cleaning, thread post splitting, memory dedup) |
+| P13 | Airtable & Drive Publisher | Created `adelia/publishers/airtable_gdrive.py` (`save_draft_to_airtable`, `save_thread_posts_to_airtable`, `upload_file_to_drive`, self-healing 422 retry, FLUX image fallback hook) |
+| P14 | FastAPI Entrypoint | Created `adelia/main.py` (`GET /health`, `POST /api/v1/generate-master`, `POST /api/v1/generate-content`, `POST /api/v1/publish`, `POST /api/v1/recall`) |
+| P15 | Containerization | Created `adelia/Dockerfile` (`python:3.11-slim`, non-root `appuser`, port 8001) & `adelia/.dockerignore` |
+| P16 | Docker Compose Integration | Added `adelia-app` service to `docker-compose.yml` (`internal-net`, no public ports) & created `adelia/.env.example` |
+| P17 | AURA Integration & Rollback | Created `AuraOne/tools/adelia_client.py` & feature flag `USE_ADELIA_SERVICE` (default False for instant rollback) |
+
+### Verification & Test Suite Summary
+- **Unit Test Coverage**: 98 tests across 10 test suites in `adelia/tests` & `AuraOne/tests` — **100% passing (98/98)**.
+- **Service Isolation**: `adelia-app` runs on `internal-net` (port 8001). If stopped (`docker stop adelia-app`), AURA degrades gracefully.
+- **HF Kill-Switch**: If `USE_HF_INFERENCE=false`, content generation continues without blocking.
+- **Instant Rollback**: If `USE_ADELIA_SERVICE=false`, AURA uses the in-process draft pipeline path without code changes.
 
 ---
 
