@@ -116,24 +116,44 @@ async def call_draft_generator_model(plat: str, draft: dict, fb_style: str = "",
 async def generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
     """Generate drafts for all selected platforms and present review with confirm buttons."""
     generated_drafts = {}
-    for plat in selected_platforms:
-        fb_style = options.get("facebook", "viral_santai")
-        fb_len = options.get("fb_len", "panjang")
-        fb_show_title = options.get("fb_show_title", False)
-        tx_style = options.get("tx_style", "genz")
-        thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
+    
+    if USE_ADELIA_SERVICE:
         try:
-            draft_text = await asyncio.wait_for(call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style), timeout=15.0)
-        except Exception as err:
-            logger.error(f"Draft generation timeout/error for {plat}: {err}")
-            style_label = f" ({fb_style})" if fb_style else ""
-            draft_text = f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+            resp = await adelia_client.generate_content(
+                master_article=draft.get("master_article", ""),
+                platforms=selected_platforms,
+                fb_style=options.get("facebook", "viral_santai"),
+                thread_style=options.get("tx_style", "genz"),
+                thread_length=options.get("thread_len", 5),
+                image_url=draft.get("image_url", ""),
+                hashtags_on=options.get("hashtags", True),
+            )
+            for p_draft in resp.get("platform_drafts", []):
+                plat_name = p_draft.get("platform", "")
+                if plat_name in selected_platforms:
+                    generated_drafts[plat_name] = p_draft.get("content", "")
+        except Exception as e:
+            logger.error(f"ADELIA generate_content failed, fallback to in-process LLM: {e}")
 
-        if not draft_text:
-            draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+    if not generated_drafts:
+        for plat in selected_platforms:
+            fb_style = options.get("facebook", "viral_santai")
+            fb_len = options.get("fb_len", "panjang")
+            fb_show_title = options.get("fb_show_title", False)
+            tx_style = options.get("tx_style", "genz")
+            thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
+            try:
+                draft_text = await asyncio.wait_for(call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style), timeout=15.0)
+            except Exception as err:
+                logger.error(f"Draft generation timeout/error for {plat}: {err}")
+                style_label = f" ({fb_style})" if fb_style else ""
+                draft_text = f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
 
-        draft_text = clean_platform_draft_output(draft_text)
-        generated_drafts[plat] = draft_text
+            if not draft_text:
+                draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+
+            draft_text = clean_platform_draft_output(draft_text)
+            generated_drafts[plat] = draft_text
 
     draft_repo.update_platform_draft(user_id, ",".join(selected_platforms), json.dumps(generated_drafts), state="")
 
