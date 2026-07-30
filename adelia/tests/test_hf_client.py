@@ -7,8 +7,21 @@ All tests mock huggingface_hub.InferenceClient — no real API calls made.
 from __future__ import annotations
 
 import os
+import sys
 import unittest
 from unittest.mock import MagicMock, patch
+
+# Mock huggingface_hub if missing in local environment
+try:
+    import huggingface_hub
+    from huggingface_hub.utils import HfHubHTTPError
+except ImportError:
+    mock_hub = MagicMock()
+    class _MockHfHubHTTPError(Exception):
+        pass
+    mock_hub.utils.HfHubHTTPError = _MockHfHubHTTPError
+    sys.modules["huggingface_hub"] = mock_hub
+    sys.modules["huggingface_hub.utils"] = mock_hub.utils
 
 # Ensure HF inference is enabled for tests (env must be set BEFORE import)
 os.environ["USE_HF_INFERENCE"] = "true"
