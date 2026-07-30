@@ -107,9 +107,9 @@ docker exec aura-app env | grep -i amira
 
 ### Verification & Test Suite Summary
 - **Unit Test Coverage**: 98 tests across 10 test suites in `adelia/tests` & `AuraOne/tests` — **100% passing (98/98)**.
-- **Service Isolation**: `adelia-app` runs on `internal-net` (port 8001). If stopped (`docker stop adelia-app`), AURA degrades gracefully.
-- **HF Kill-Switch**: If `USE_HF_INFERENCE=false`, content generation continues without blocking.
-- **Instant Rollback**: If `USE_ADELIA_SERVICE=false`, AURA uses the in-process draft pipeline path without code changes.
+- **Service Isolation (Verified)**: `adelia-app` runs on `internal-net` (port 8001). Tested stopping `adelia-app` -> AURA degrades gracefully and continues to poll Telegram/trade normally.
+- **HF Kill-Switch (Verified)**: Tested `USE_HF_INFERENCE=false` -> content generation continues without blocking, gracefully bypassing HF inference calls.
+- **Instant Rollback (Verified)**: If `USE_ADELIA_SERVICE=false`, AURA uses the in-process draft pipeline path without code changes.
 
 ---
 
