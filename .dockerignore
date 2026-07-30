@@ -1,0 +1,16 @@
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+**/.env
+.git/
+sessions/
+images/
+dumps/
+*.db
+*.db-journal
+*.bak
+b1_proof.sh
+task.md
