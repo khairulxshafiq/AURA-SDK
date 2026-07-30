@@ -2,7 +2,7 @@
 # Runs the FastAPI advisory service on port 8000 (internal network only).
 # NOT exposed to the public internet — aura-app reaches it at http://amira-app:8000.
 
-FROM python:3.13-slim
+FROM python:3.12-slim
 
 # --- system deps for pandas / pandas-ta / llvmlite (numba) ---
 RUN apt-get update && apt-get install -y --no-install-recommends \
