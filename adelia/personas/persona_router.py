@@ -90,3 +90,21 @@ def suggest_fb_persona(
     )
 
     return suggestion
+
+
+class PersonaRouter:
+    """Class wrapper for zero-shot persona routing using an HFClient."""
+
+    def __init__(self, hf_client=None) -> None:
+        self.hf_client = hf_client
+
+    def suggest_fb_persona(
+        self,
+        article_text: str,
+        labels: list[str] | None = None,
+    ) -> PersonaSuggestion | None:
+        """Suggest the best FB persona using the injected HFClient."""
+        if self.hf_client is None:
+            return None
+        return suggest_fb_persona(article_text, self.hf_client, labels=labels)
+
