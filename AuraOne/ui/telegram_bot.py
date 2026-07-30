@@ -363,6 +363,7 @@ LIVE_SEARCH_KEYWORDS = [
     "top stories", "berita", "trending", "viral", "gnews", "/news"
 ]
 
+TRADING_KEYWORDS = ["analisa", "saham", "harga", "tp", "sl", "bursa", "kaunter"]
 
 def route_intent(message_text: str) -> str:
     """Determine message intent: SCRAPE_PIPELINE, URL_SUGGEST, CONTEXTUAL_CHAT, LIVE_NEWS_SEARCH, or DAILY_CHAT."""
@@ -378,6 +379,12 @@ def route_intent(message_text: str) -> str:
         return "CONTEXTUAL_CHAT"
 
     text_clean = text.lower()
+    
+    import re
+    trading_re = re.compile(r'\b(' + '|'.join(TRADING_KEYWORDS) + r')\b', re.IGNORECASE)
+    if trading_re.search(text_clean):
+        return "TRADING_PIPELINE"
+
     if any(kw in text_clean for kw in LIVE_SEARCH_KEYWORDS):
         return "LIVE_NEWS_SEARCH"
 
@@ -444,6 +451,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE, ove
 
         elif intent == "LIVE_NEWS_SEARCH":
             await send_gnews_trending(update, context, category="trending", max_items=6)
+            return
+
+        elif intent == "TRADING_PIPELINE":
+            context.args = user_message.split()
+            await handle_stock_command(update, context)
             return
 
     await context.bot.send_chat_action(chat_id=chat_id, action="typing")
