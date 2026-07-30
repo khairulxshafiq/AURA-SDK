@@ -30,3 +30,5 @@ dumps/
 images/
 *.bak
 
+# Scripts
+b1_proof.sh

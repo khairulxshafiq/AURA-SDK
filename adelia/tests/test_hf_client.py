@@ -41,14 +41,20 @@ class _FakeResponse:
 
     def __init__(self, status_code: int) -> None:
         self.status_code = status_code
+        self.headers: dict[str, str] = {}
+        self.request = MagicMock()
 
 
 def _make_hf_http_error(status_code: int) -> Exception:
     """Create an HfHubHTTPError-like exception with a .response attribute."""
     from huggingface_hub.utils import HfHubHTTPError
 
-    exc = HfHubHTTPError(f"Mock error {status_code}")
-    exc.response = _FakeResponse(status_code)
+    resp = _FakeResponse(status_code)
+    try:
+        exc = HfHubHTTPError(f"Mock error {status_code}", response=resp)
+    except TypeError:
+        exc = HfHubHTTPError(f"Mock error {status_code}")
+        exc.response = resp
     return exc
 
 
