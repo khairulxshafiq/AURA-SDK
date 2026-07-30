@@ -1,6 +1,11 @@
 """
 ADELIA Publisher — Airtable Content Station & Google Drive Storage.
 
+DUPLICATE NOTICE:
+This is the primary microservice publisher. An in-process fallback copy lives at
+AuraOne/tools/publisher_service.py for USE_ADELIA_SERVICE=False fallback mode.
+WARNING: Mirror any Airtable schema or field name changes in both files!
+
 Ported from AuraOne/tools/publisher_service.py.
 Pure I/O layer — NO Telegram dependencies, NO file_id handling.
 Accepts only resolved image URLs or raw bytes.
