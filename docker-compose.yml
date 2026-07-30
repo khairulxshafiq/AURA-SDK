@@ -33,7 +33,7 @@ services:
       - amira/.env
     volumes:
       # Persistent Hermes SQLite memory — mapped to host for backup/inspection
-      - ./amira/data:/app/data
+      - ./amira/data:/app/amira/data
     networks:
       - internal-net
     # NO public port mapping — AURA reaches this service on the internal
@@ -54,7 +54,7 @@ services:
       - adelia/.env
     volumes:
       # Persistent ADELIA vector memory DB — mapped to host
-      - ./adelia/data:/app/data
+      - ./adelia/data:/app/adelia/data
     networks:
       - internal-net
     # NO public port mapping — AURA reaches this service on the internal

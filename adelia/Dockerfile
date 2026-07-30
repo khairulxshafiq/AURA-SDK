@@ -26,7 +26,7 @@ COPY adelia/ ./adelia/
 
 # ---------- Set environment & non-root user ----------
 ENV PYTHONPATH=/app
-USER appuser
+# USER appuser
 
 # ---------- Entrypoint ----------
 # Bound to 0.0.0.0:8001 inside container (internal network only)
