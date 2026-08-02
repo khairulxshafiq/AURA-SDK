@@ -39,7 +39,7 @@ async def call_llm(
     def _sync_gemini_call(api_key: str) -> str:
         from google import genai
         client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
+        response = client.models.generate_content(model='gemini-2.0-flash', contents=prompt)
         return response.text if response and response.text else ""
 
     num_keys = len(GEMINI_KEYS)

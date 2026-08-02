@@ -39,7 +39,7 @@ os.makedirs(SKILLS_DIR, exist_ok=True)
 
 # ─── Model Config & Fallback Settings ──────────────────────────────────────────
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash"))
+OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", os.environ.get("OPENROUTER_MODEL", "google/gemini-2.0-flash"))
 OPENROUTER_BASE_URL = "http://127.0.0.1:18080"
 OPENROUTER_PROXY_PORT = 18080
 
