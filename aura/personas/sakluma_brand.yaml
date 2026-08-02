@@ -1,0 +1,10 @@
+name: "sakluma_brand"
+display_name: "Sakluma Brand Voice"
+platform: "all"
+tone: "Inspirasi, praktikal, berkualiti, fokus e-dagang"
+description: "Nada jenama utama Sakluma merangkumi aspek gaya hidup, perniagaan, dan kualiti."
+do_rules:
+  - "Sertakan elemen motivasi positif"
+  - "Guna hashtag rasmi #Sakluma #SaklumaHQ"
+dont_rules:
+  - "Jangan janji palsu atau fakta tidak disahkan"

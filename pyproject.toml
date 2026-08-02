@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aura-one"
+version = "1.0.0"
+description = "AuraOne Personal AI Operating System"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+    # Runtime & SDK
+    "google-antigravity>=0.1.0",
+    "google-genai>=2.14.0",
+    "pydantic>=2.10.0,<3.0.0",
+    "pydantic-settings>=2.7.0",
+    "python-dotenv>=1.0.0",
+    "structlog>=24.1.0",
+
+    # Interfaces
+    "python-telegram-bot>=21.0,<23.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+
+    # Tools & Scrapers
+    "requests>=2.32.0",
+    "httpx>=0.28.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=5.0.0",
+    "googlenewsdecoder>=0.1.7",
+    "huggingface-hub>=0.25.0",
+
+    # Trading & Math
+    "yfinance>=0.2.50",
+    "pandas>=2.2.0,<3.0.0",
+    "numpy>=1.26.0",
+
+    # Memory & Vector
+    "sqlite-vec>=0.1.9",
+    "fastembed>=0.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=5.0.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
