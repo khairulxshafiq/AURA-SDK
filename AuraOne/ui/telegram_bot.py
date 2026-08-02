@@ -379,8 +379,6 @@ def route_intent(message_text: str) -> str:
         return "CONTEXTUAL_CHAT"
 
     text_clean = text.lower()
-    
-    import re
     trading_re = re.compile(r'\b(' + '|'.join(TRADING_KEYWORDS) + r')\b', re.IGNORECASE)
     if trading_re.search(text_clean):
         return "TRADING_PIPELINE"
