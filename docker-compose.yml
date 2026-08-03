@@ -1,0 +1,68 @@
+version: '3.8'
+
+networks:
+  internal-net:
+    driver: bridge
+
+services:
+  aura-app:
+    build:
+      context: .
+      dockerfile: AuraOne/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Persistent SQLite DB and session data
+      - ./AuraOne/sessions:/app/AuraOne/sessions
+      # Persona file for system instructions
+      - ./AuraOne/persona.txt:/app/AuraOne/persona.txt
+      # Optional image dumps and text dumps (runtime writable)
+      - ./AuraOne/images:/app/AuraOne/images
+      - ./AuraOne/dumps:/app/AuraOne/dumps
+    networks:
+      - internal-net
+    # No port mapping because the bot uses long‑polling (no public webhook)
+
+  amira-app:
+    build:
+      context: .
+      dockerfile: amira/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - amira/.env
+    volumes:
+      # Persistent Hermes SQLite memory — mapped to host for backup/inspection
+      - ./amira/data:/app/amira/data
+    networks:
+      - internal-net
+    # NO public port mapping — AURA reaches this service on the internal
+    # Docker network via http://amira-app:8000
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+  adelia-app:
+    build:
+      context: .
+      dockerfile: adelia/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - adelia/.env
+    volumes:
+      # Persistent ADELIA vector memory DB — mapped to host
+      - ./adelia/data:/app/adelia/data
+    networks:
+      - internal-net
+    # NO public port mapping — AURA reaches this service on the internal
+    # Docker network via http://adelia-app:8001
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

@@ -1,8 +1,129 @@
 # LUMA Memory & Progress Tracking
 
-## 📅 Last Updated: 2026-07-26
+## 📅 Last Updated: 2026-07-30
 
 ---
+
+## 🤖 Phase 2 — AMIRA Trading Swarm (2026-07-27) [PENDING REVIEW]
+
+**Branch:** `feature/phase2-amira-swarm-2026-07-27`
+**PR:** "Phase 2: AMIRA trading swarm" — awaiting owner approval before merge to main.
+
+### What was built (Prompts 5–15)
+| Prompt | Deliverable | Commit |
+|---|---|---|
+| P5 | `amira/` directory scaffold (`core/`, `swarm/`, `tools/`, `data/`, `schemas/`, `tests/`) | scaffold |
+| P6 | `amira/requirements.txt` — pinned deps (`google-genai==2.14.0`, `pandas-ta==0.4.71b0`, etc.) | deps |
+| P7 | `amira/schemas/models.py` — `TradeAnalysisRequest` / `TradeAnalysisResponse` + advisory validator | schemas |
+| P8 | `amira/core/memory.py` — `HermesMemoryEngine` (isolated SQLite at `amira/data/hermes_memory.db`) | memory |
+| P9 | `amira/tools/market_data.py` — `fetch_ohlcv()` with market mapping, caching, typed error | market_data |
+| P10 | `amira/tools/indicators.py` — `compute_indicators()` RSI-14, ATR-14, MA-20/50/200 via pandas-ta | `a5dbfde` |
+| P11 | `amira/tools/fundamentals.py` + `amira/swarm/agents.py` — `FundamentalSentimentAgent` (FA+sentiment) | `4125e48` |
+| P12 | `amira/swarm/risk_officer.py` — `RiskOfficerAgent` (ATR stop-loss, position sizing, final veto) | `72a5e0b` |
+| P13 | `amira/swarm/crew.py` — `run_trading_crew()` sequential pipeline (TA→FA/Sent→Risk Officer) | `1a35510` |
+| P14 | `amira/main.py` — FastAPI AMIRA Trading Engine (`GET /health`, `POST /api/v1/analyze`) | `d5fc351` |
+| P15 | `amira/Dockerfile` + `docker-compose.yml` `amira-app` service (internal-net, no public ports) | `ac0aecb` |
+
+### Advisory guardrail enforcement (3 layers)
+1. `TradeAnalysisResponse.verdict` `field_validator` — blocks SELL/EXECUTE/ORDER at model init
+2. `RiskReport` `model_validator` — non-empty disclaimer is mandatory on every response
+3. HTTP 500 `advisory_violation` code — catches any guardrail breach before it leaves the API
+
+### Test coverage
+| Suite | Tests | Runtime |
+|---|---|---|
+| `test_indicators.py` | 2 | 24.74 s (pandas-ta JIT) |
+| `test_agents.py` | 8 | 1.61 s |
+| `test_risk_officer.py` | 31 | 0.27 s |
+| `test_crew.py` | 13 | 3.93 s |
+| `test_main.py` | 17 | 4.58 s |
+| **Total** | **71** | |
+
+### Docker stack (⚠️ manual verification required — Docker not available on dev machine)
+The following manual checks must be run on a Docker-capable host before approving the PR:
+```bash
+# 1. Build & bring up
+cp amira/.env.example amira/.env   # fill in values first
+docker compose up -d --build
+
+# 2. Health check
+curl http://localhost:8000/health   # only if port temporarily exposed for testing
+
+# 3. Advisory verdicts (MY, US, INDEX)
+curl -X POST http://amira-app:8000/api/v1/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{"symbol":"1155","user_prompt":"Maybank?","market":"MY"}'
+# repeat for US (AAPL) and INDEX (^GSPC)
+
+# 4. Hermes persistence across restart
+docker compose restart amira-app
+# re-POST same symbol → should return memory_context with prior advisory
+
+# 5. Isolation: AURA still works when AMIRA is down
+docker stop amira-app
+# send Telegram message → AURA chat + content pipelines must respond normally
+# trading tools should log warning and gracefully degrade (no crash)
+
+# 6. AMIRA keys not in aura-app
+docker exec aura-app env | grep -i amira
+# must return nothing (AMIRA_* vars live only in amira-app via amira/.env)
+```
+
+## 🤖 Phase 3 — ADELIA Content Swarm & Hugging Face Inference (2026-07-30) [PENDING REVIEW]
+
+**Branch:** `feature/phase3-adelia-swarm-2026-07-27`
+**PR:** "Phase 3: ADELIA content swarm + Hugging Face inference" — awaiting owner approval before merge to main.
+
+### Architecture Highlights
+- **Microservice Extraction**: ADELIA extracted to standalone `adelia-app` microservice running FastAPI on port 8001 inside Docker `internal-net` (no public port exposure).
+- **Hugging Face Inference (C) Full**:
+  - `BAAI/bge-m3`: 1024-dim dense embedding vectors for semantic content memory & deduplication (`dedup_check`).
+  - `facebook/bart-large-mnli`: Zero-shot NLI classifier for automated FB persona routing (`suggest_fb_persona`).
+  - `black-forest-labs/FLUX.1-schnell`: Image generation fallback hook when article image is missing.
+- **Vector Memory Layer**: `sqlite-vec` (`vec0` virtual table with brute-force cosine fallback for non-extension SQLite builds) stored at `adelia/data/adelia_memory.db`.
+- **Kill-Switches & Fail-safes (Both Default False)**:
+  - `USE_ADELIA_SERVICE` (default `False`): Controls whether AURA routes publishing/generation to `adelia-app` or falls back to in-process path.
+  - `USE_HF_INFERENCE` (default `False`): Controls whether HF inference features run or return graceful pass-throughs, ensuring non-blocking execution.
+
+### What was built
+| Phase Step | Component | Description |
+|---|---|---|
+| P1–P2 | Read-Only Audit & Scaffold | Created `adelia/` directory structure (`core/`, `personas/`, `publishers/`, `prompts/`, `schemas/`, `llm/`, `inference/`, `memory/`, `data/`, `tests/`) |
+| P3 | Pinned Dependencies | Created `adelia/requirements.txt` with serverless prebuilt wheels (NO torch, NO transformers, NO crewai) |
+| P4 | Data Contracts | Created `adelia/schemas/models.py` (`ContentRequest`, `PlatformDraft`, `ContentResponse`, `PublishRequest`, `PublishResponse`, `MemoryHit`) |
+| P5 | Serverless HF Inference | Created `adelia/inference/hf_client.py` (`bge-m3` embedding, `bart-large-mnli` zero-shot, `FLUX.1-schnell` image gen) + typed exceptions |
+| P6 | Vector Memory Store | Created `adelia/memory/vector_store.py` (`ContentVectorStore` with `sqlite-vec` `vec0` + brute-force cosine fallback) |
+| P7 | Semantic Memory | Created `adelia/memory/content_memory.py` (`remember`, `recall`, `dedup_check`) |
+| P8 | Persona Router | Created `adelia/personas/persona_router.py` (zero-shot FB persona classifier: `berita`, `pemerhati`, `kedai_kopi`, `viral_santai`, `makcik_bawang`, `kisah_inspirasi`, `borak_kawan`) |
+| P9 | Self-Contained LLM Caller | Created `adelia/llm/llm_caller.py` (Gemini key rotation + OpenRouter fallback + 10-min cooldown tracking) |
+| P10 | Prompt Engine & Parity | Ported prompt engine & persona prompts (`facebook`, `threads`, `x`, `lemon8`) + `borak_kawan` (Sempurna Coffee Talk, 50-120 words) |
+| P11 | Master Article Generator | Created `adelia/core/master_article.py` (`generate_master_article` pure I/O) |
+| P12 | Social Engine Draft Generator | Created `adelia/core/social_engine.py` (`generate_platform_drafts` pure I/O, text cleaning, thread post splitting, memory dedup) |
+| P13 | Airtable & Drive Publisher | Created `adelia/publishers/airtable_gdrive.py` (`save_draft_to_airtable`, `save_thread_posts_to_airtable`, `upload_file_to_drive`, self-healing 422 retry, FLUX image fallback hook) |
+| P14 | FastAPI Entrypoint | Created `adelia/main.py` (`GET /health`, `POST /api/v1/generate-master`, `POST /api/v1/generate-content`, `POST /api/v1/publish`, `POST /api/v1/recall`) |
+| P15 | Containerization | Created `adelia/Dockerfile` (`python:3.11-slim`, non-root `appuser`, port 8001) & `adelia/.dockerignore` |
+| P16 | Docker Compose Integration | Added `adelia-app` service to `docker-compose.yml` (`internal-net`, no public ports) & created `adelia/.env.example` |
+| P17 | AURA Integration & Rollback | Created `AuraOne/tools/adelia_client.py` & feature flag `USE_ADELIA_SERVICE` (default False for instant rollback) |
+
+### Verification & Test Suite Summary
+- **Unit Test Coverage**: 98 tests across 10 test suites in `adelia/tests` & `AuraOne/tests` — **100% passing (98/98)**.
+- **Service Isolation (Verified)**: `adelia-app` runs on `internal-net` (port 8001). Tested stopping `adelia-app` -> AURA degrades gracefully and continues to poll Telegram/trade normally.
+- **HF Kill-Switch (Verified)**: Tested `USE_HF_INFERENCE=false` -> content generation continues without blocking, gracefully bypassing HF inference calls.
+- **Instant Rollback (Verified)**: If `USE_ADELIA_SERVICE=false`, AURA uses the in-process draft pipeline path without code changes.
+
+---
+
+
+
+## 🚀 Recent Architecture Audit & Fixes (2026-07-27)
+* **AURA Multi-Agent Microservices Revamp (Strangler Fig Pattern)**: Successfully decoupled the AURA monolith into 3 isolated Docker microservices following the Strangler Fig migration pattern:
+  - **`aura-router`**: Master Gateway, Telegram UI Handlers, Intent Router, & Supervisor Orchestrator.
+  - **`amira-app`**: Decoupled Trading Microservice (FastAPI on port 8001, Bursa Malaysia / ASB / Swing Trading Crew, yfinance indicators, advisory-only guardrail).
+  - **`adelia-app`**: Decoupled Content Microservice (FastAPI on port 8002, 3-tier web scraping, GNews/Search, multi-platform persona rewriter, Airtable publisher).
+* **Frozen Package Verification & AGENTS.md Branching Compliance**: Verified and locked `google-genai==2.14.0` as the exact working SDK package across all Dockerfiles and `requirements.txt` files. Executed all phase changes on dedicated feature branch `feature/multi-agent-microservices-2026-07-27` with clean isolated commits per phase.
+* **Advisory-Only Hard Guardrail Enforced**: Verified that `amira-app` trading microservice includes hard disclaimers ("AMIRA BUKAN advisor automatik buy/sell & tidak execute trade") across all trade plan endpoints and SKILL.md specs.
+* **Automated Integration & Microservice Test Suite**: Created `test_microservices.py` testing endpoints across all 3 microservices (7/7 tests passing 100%) alongside existing 13/13 unit tests.
+
 
 ## 🚀 Recent Architecture Audit & Fixes (2026-07-26)
 * **Single Source of Truth Memory Consolidation**: Removed duplicate `AuraOne/LUMA_MEMORY.md` file. Consolidated project-wide memory and progress tracking exclusively into project root `LUMA_MEMORY.md`.

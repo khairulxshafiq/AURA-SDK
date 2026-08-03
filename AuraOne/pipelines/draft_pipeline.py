@@ -14,6 +14,8 @@ import storage.draft_repository as draft_repo
 from tools.publisher_service import save_draft_to_airtable, _prepare_drive_image_for_airtable
 from ui.formatters import _send_telegram_msg
 from pipelines.llm_caller import call_llm
+from config import USE_ADELIA_SERVICE
+import tools.adelia_client as adelia_client
 
 logger = logging.getLogger("aura.pipelines.draft_pipeline")
 
@@ -114,24 +116,44 @@ async def call_draft_generator_model(plat: str, draft: dict, fb_style: str = "",
 async def generate_all_platform_drafts(user_id: int, chat_id: int, selected_platforms: list, options: dict, draft: dict, context, message):
     """Generate drafts for all selected platforms and present review with confirm buttons."""
     generated_drafts = {}
-    for plat in selected_platforms:
-        fb_style = options.get("facebook", "viral_santai")
-        fb_len = options.get("fb_len", "panjang")
-        fb_show_title = options.get("fb_show_title", False)
-        tx_style = options.get("tx_style", "genz")
-        thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
+    
+    if USE_ADELIA_SERVICE:
         try:
-            draft_text = await asyncio.wait_for(call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style), timeout=15.0)
-        except Exception as err:
-            logger.error(f"Draft generation timeout/error for {plat}: {err}")
-            style_label = f" ({fb_style})" if fb_style else ""
-            draft_text = f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+            resp = await adelia_client.generate_content(
+                master_article=draft.get("master_article", ""),
+                platforms=selected_platforms,
+                fb_style=options.get("facebook", "viral_santai"),
+                thread_style=options.get("tx_style", "genz"),
+                thread_length=options.get("thread_len", 5),
+                image_url=draft.get("image_url", ""),
+                hashtags_on=options.get("hashtags", True),
+            )
+            for p_draft in resp.get("platform_drafts", []):
+                plat_name = p_draft.get("platform", "")
+                if plat_name in selected_platforms:
+                    generated_drafts[plat_name] = p_draft.get("content", "")
+        except Exception as e:
+            logger.error(f"ADELIA generate_content failed, fallback to in-process LLM: {e}")
 
-        if not draft_text:
-            draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+    if not generated_drafts:
+        for plat in selected_platforms:
+            fb_style = options.get("facebook", "viral_santai")
+            fb_len = options.get("fb_len", "panjang")
+            fb_show_title = options.get("fb_show_title", False)
+            tx_style = options.get("tx_style", "genz")
+            thread_length = options.get("thread_len", 5) if plat in ["x", "threads"] else 0
+            try:
+                draft_text = await asyncio.wait_for(call_draft_generator_model(plat, draft, fb_style, thread_length, fb_len, fb_show_title, tx_style), timeout=15.0)
+            except Exception as err:
+                logger.error(f"Draft generation timeout/error for {plat}: {err}")
+                style_label = f" ({fb_style})" if fb_style else ""
+                draft_text = f"📰 *{draft['title']}*{style_label}\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
 
-        draft_text = clean_platform_draft_output(draft_text)
-        generated_drafts[plat] = draft_text
+            if not draft_text:
+                draft_text = f"📰 *{draft['title']}*\n\n{draft['master_article'][:1200]}\n\n{draft.get('hashtags', '')}"
+
+            draft_text = clean_platform_draft_output(draft_text)
+            generated_drafts[plat] = draft_text
 
     draft_repo.update_platform_draft(user_id, ",".join(selected_platforms), json.dumps(generated_drafts), state="")
 
@@ -165,15 +187,44 @@ async def confirm_platform_push(user_id: int, draft: dict, plat_to_confirm: str,
     if target_airtable_img and target_airtable_img.startswith("http://"):
         target_airtable_img = "https://" + target_airtable_img[7:]
 
-    res = save_draft_to_airtable(
-        title=draft["title"],
-        caption=specific_draft,
-        platform=plat_to_confirm,
-        source_url=draft["source_url"],
-        image_url=target_airtable_img,
-        status="Draft",
-        hashtags=draft["hashtags"]
-    )
+    # Microservice routing vs In-process fallback
+    if USE_ADELIA_SERVICE:
+        logger.info("[DraftPipeline] Routing confirm & push to ADELIA microservice...")
+        draft_payload = {
+            "platform": plat_to_confirm,
+            "caption": specific_draft,
+            "image_url": target_airtable_img,
+        }
+        extra_fields = {
+            "title": draft["title"],
+            "source_url": draft.get("source_url", ""),
+            "hashtags": draft.get("hashtags", ""),
+            "status": "Draft",
+        }
+        try:
+            pub_res = await adelia_client.publish(draft=draft_payload, content_type="Post", extra_fields=extra_fields)
+            res = {"status": "success" if pub_res.get("status") in ["published", "queued"] else "error", "error": pub_res.get("error")}
+        except Exception as exc:
+            logger.error(f"[DraftPipeline] ADELIA publish failed, falling back to in-process path: {exc}")
+            res = save_draft_to_airtable(
+                title=draft["title"],
+                caption=specific_draft,
+                platform=plat_to_confirm,
+                source_url=draft["source_url"],
+                image_url=target_airtable_img,
+                status="Draft",
+                hashtags=draft["hashtags"]
+            )
+    else:
+        res = save_draft_to_airtable(
+            title=draft["title"],
+            caption=specific_draft,
+            platform=plat_to_confirm,
+            source_url=draft["source_url"],
+            image_url=target_airtable_img,
+            status="Draft",
+            hashtags=draft["hashtags"]
+        )
 
     if res["status"] == "success":
         draft_repo.clear_draft(user_id)
@@ -224,15 +275,44 @@ async def handle_confirm_command(update, context):
     except Exception:
         pass
 
-    res = save_draft_to_airtable(
-        title=title,
-        caption=specific_draft,
-        platform=selected_platform,
-        source_url=source_url,
-        image_url=final_image_url,
-        status="Draft",
-        hashtags=hashtags
-    )
+    # Microservice routing vs In-process fallback
+    if USE_ADELIA_SERVICE:
+        logger.info("[DraftPipeline] Routing /confirm command to ADELIA microservice...")
+        draft_payload = {
+            "platform": selected_platform,
+            "caption": specific_draft,
+            "image_url": final_image_url,
+        }
+        extra_fields = {
+            "title": title,
+            "source_url": source_url,
+            "hashtags": hashtags,
+            "status": "Draft",
+        }
+        try:
+            pub_res = await adelia_client.publish(draft=draft_payload, content_type="Post", extra_fields=extra_fields)
+            res = {"status": "success" if pub_res.get("status") in ["published", "queued"] else "error", "error": pub_res.get("error")}
+        except Exception as exc:
+            logger.error(f"[DraftPipeline] ADELIA publish failed, falling back to in-process path: {exc}")
+            res = save_draft_to_airtable(
+                title=title,
+                caption=specific_draft,
+                platform=selected_platform,
+                source_url=source_url,
+                image_url=final_image_url,
+                status="Draft",
+                hashtags=hashtags
+            )
+    else:
+        res = save_draft_to_airtable(
+            title=title,
+            caption=specific_draft,
+            platform=selected_platform,
+            source_url=source_url,
+            image_url=final_image_url,
+            status="Draft",
+            hashtags=hashtags
+        )
 
     if res["status"] == "success":
         draft_repo.clear_draft(user_id)

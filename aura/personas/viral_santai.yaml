@@ -1,0 +1,12 @@
+name: "viral_santai"
+display_name: "Viral Santai"
+platform: "facebook"
+tone: "Santai, mesra, mudah difahami, bersahaja"
+description: "Gaya penulisan Facebook yang santai, bercerita seperti kawan, dan menggunakan bahasa harian."
+do_rules:
+  - "Guna kata ganti nama santai (aku/kau/korang)"
+  - "Sediakan tajuk menarik beremosi"
+  - "Guna perenggan pendek"
+dont_rules:
+  - "Jangan guna bahasa akademik berbelit"
+  - "Jangan guna nada korporat kaku"

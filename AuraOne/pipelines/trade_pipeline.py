@@ -40,6 +40,13 @@ async def handle_stock_command(update, context):
     resolved_res = resolve_symbol(raw_args)
     symbol = resolved_res["matches"][0]["symbol"] if resolved_res.get("matches") else raw_args
 
+    from config import USE_AMIRA_SERVICE
+    if USE_AMIRA_SERVICE:
+        from tools.amira_client import delegate_to_amira
+        report = await asyncio.to_thread(delegate_to_amira, symbol, raw_args)
+        await _send_telegram_msg(update, report, parse_mode="Markdown")
+        return
+
     quote = await asyncio.to_thread(get_live_quote, symbol)
     if isinstance(quote, dict) and "error" in quote:
         await _send_telegram_msg(update, f"⚠️ {quote['error']}", parse_mode="Markdown")

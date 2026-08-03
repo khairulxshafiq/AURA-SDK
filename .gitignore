@@ -28,5 +28,10 @@ AuraOne/dumps/
 AuraOne/images/
 dumps/
 images/
+data/
+logs/
+.aura/
 *.bak
 
+# Scripts
+b1_proof.sh

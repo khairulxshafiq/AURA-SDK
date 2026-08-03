@@ -1,0 +1,8 @@
+google-genai==2.14.0
+fastapi==0.115.8
+uvicorn==0.34.0
+yfinance==1.5.2
+pandas==3.0.5
+httpx==0.28.1
+python-dotenv==1.2.2
+pandas-ta

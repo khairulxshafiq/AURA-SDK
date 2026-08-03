@@ -13,7 +13,21 @@ logging.basicConfig(
 logger = logging.getLogger("aura.config")
 
 # ─── Directories & Paths ──────────────────────────────────────────────────────
+# ─── Directories & Paths ──────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# New storage root for containerized persistence (mounted as /app/storage)
+STORAGE_ROOT = os.getenv("STORAGE_ROOT", os.path.join(BASE_DIR, "storage"))
+SESSIONS_DIR = os.path.join(STORAGE_ROOT, "sessions")
+SKILLS_DIR = os.path.join(BASE_DIR, "skills")
+PERSONA_PATH = os.path.join(BASE_DIR, "persona.txt")
+SESSION_MAP_PATH = os.path.join(SESSIONS_DIR, "user_session_map.json")
+# Primary DB path (container path)
+DB_PATH = os.path.join(SESSIONS_DIR, "aura_memory.db")
+# Backward compatibility for legacy scripts expecting sessions under BASE_DIR
+LEGACY_SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
+# Ensure both directories exist
+os.makedirs(SESSIONS_DIR, exist_ok=True)
+os.makedirs(LEGACY_SESSIONS_DIR, exist_ok=True)
 SESSIONS_DIR = os.path.join(BASE_DIR, "sessions")
 SKILLS_DIR = os.path.join(BASE_DIR, "skills")
 PERSONA_PATH = os.path.join(BASE_DIR, "persona.txt")
@@ -25,7 +39,7 @@ os.makedirs(SKILLS_DIR, exist_ok=True)
 
 # ─── Model Config & Fallback Settings ──────────────────────────────────────────
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
-OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash"))
+OPENROUTER_FALLBACK_MODEL = os.environ.get("OPENROUTER_FALLBACK_MODEL", os.environ.get("OPENROUTER_MODEL", "google/gemini-2.0-flash"))
 OPENROUTER_BASE_URL = "http://127.0.0.1:18080"
 OPENROUTER_PROXY_PORT = 18080
 
@@ -42,6 +56,13 @@ FIRECRAWL_ENABLED = os.environ.get("FIRECRAWL_ENABLED", "false").lower() == "tru
 FIRECRAWL_TIMEOUT_MS = int(os.environ.get("FIRECRAWL_TIMEOUT_MS", "30000"))
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+
+# ─── Microservices Service URLs ────────────────────────────────────────────────
+AMIRA_SERVICE_URL = os.environ.get("AMIRA_SERVICE_URL", "").rstrip("/")
+USE_AMIRA_SERVICE = os.environ.get("USE_AMIRA_SERVICE", "false").lower() == "true"
+ADELIA_SERVICE_URL = os.environ.get("ADELIA_SERVICE_URL", "http://adelia-app:8001").rstrip("/")
+USE_ADELIA_SERVICE = os.environ.get("USE_ADELIA_SERVICE", "false").lower() == "true"
+
 
 # ─── Google Drive Storage Config ─────────────────────────────────────────────
 def _extract_gdrive_folder_id(val: str, default_id: str) -> str:

@@ -1,0 +1,23 @@
+# ─────────────────────────────────────────────────────────────
+# ADELIA Microservice — Pinned Dependencies
+# Branch: feature/phase3-adelia-swarm-2026-07-27
+# Policy: NO torch, NO transformers, NO sentence-transformers,
+#         NO crewai — HF Inference API is serverless.
+# ─────────────────────────────────────────────────────────────
+
+# ── Shared with AuraOne (pinned to same versions) ──────────
+google-genai==2.14.0
+python-dotenv==1.2.2
+requests==2.34.2
+httpx==0.28.1
+
+# ── ADELIA-specific: API framework ─────────────────────────
+fastapi==0.140.13
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+
+# ── ADELIA-specific: HF serverless inference ───────────────
+huggingface_hub==1.25.1
+
+# ── ADELIA-specific: vector memory layer ───────────────────
+sqlite-vec==0.1.9

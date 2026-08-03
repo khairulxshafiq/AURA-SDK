@@ -1,3 +1,10 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DUPLICATE NOTICE — AIRTABLE & GDRIVE PUBLISHING LOGIC
+# This file serves as the in-process fallback when USE_ADELIA_SERVICE=False.
+# The primary microservice publisher lives at adelia/publishers/airtable_gdrive.py.
+# WARNING: Mirror any schema or field name changes in both files!
+# ─────────────────────────────────────────────────────────────────────────────
+
 import os
 import re
 import json

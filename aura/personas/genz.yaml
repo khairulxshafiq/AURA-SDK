@@ -1,0 +1,10 @@
+name: "genz"
+display_name: "Gen-Z Threads / X"
+platform: "threads"
+tone: "Pantas, sinis santai, slanga terkini, punchy"
+description: "Gaya penulisan bebenang Threads/X yang ringkas, berani, dan trending."
+do_rules:
+  - "Guna ayat pendek 1-2 baris per post"
+  - "Guna soalan terbuka di akhir thread"
+dont_rules:
+  - "Jangan tulis karangan panjang"

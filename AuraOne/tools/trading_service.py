@@ -8,7 +8,26 @@ import datetime
 import logging
 from typing import Optional, List, Dict, Any
 
+import httpx
+from config import AMIRA_SERVICE_URL
+
 logger = logging.getLogger("aura.tools.trading_service")
+
+def _delegate_to_amira(endpoint: str, payload: dict) -> Optional[dict]:
+    """Delegate trading execution to AMIRA microservice if configured."""
+    if not AMIRA_SERVICE_URL:
+        return None
+    try:
+        url = f"{AMIRA_SERVICE_URL}{endpoint}"
+        resp = httpx.post(url, json=payload, timeout=10.0)
+        if resp.status_code == 200:
+            logger.info(f"Successfully delegated trading request to AMIRA microservice: {endpoint}")
+            return resp.json()
+        logger.warning(f"AMIRA service returned status {resp.status_code} for {endpoint}")
+    except Exception as e:
+        logger.warning(f"Failed to delegate to AMIRA microservice ({endpoint}): {e}")
+    return None
+
 
 # Symbol resolution mapping for common Bursa Malaysia stocks & tickers
 BURSA_SYMBOL_MAP: Dict[str, str] = {
@@ -77,6 +96,10 @@ def resolve_symbol(query: str) -> dict:
     Tukar nama syarikat/sebahagian nama kepada kod Bursa rasmi 4-digit.
     Guna bila user sebut nama, bukan kod.
     """
+    remote = _delegate_to_amira("/api/v1/trading/resolve", {"symbol": query})
+    if remote:
+        return remote
+
     clean = query.strip().lower()
     matches = []
     
@@ -102,7 +125,12 @@ def get_live_quote(symbol: str, include_intraday: bool = False) -> dict:
     Tarik harga & data teknikal real-time satu kaunter Bursa Malaysia dari yfinance.
     Guna bila user bagi kod saham/nama, atau nak confirm angka dari screenshot.
     """
+    remote = _delegate_to_amira("/api/v1/trading/quote", {"symbol": symbol})
+    if remote:
+        return remote
+
     import yfinance as yf
+
     yf_symbol = _format_yf_symbol(symbol)
     bursa_code = yf_symbol.replace(".KL", "")
     
@@ -208,6 +236,10 @@ def get_fundamentals(symbol: str, quarters: int = 8) -> dict:
     Tarik data fundamental (3M & DACE) satu kaunter untuk analisis Position/DCA & status 'budak healthy'.
     Wajib guna sebelum bagi verdict DCA.
     """
+    remote = _delegate_to_amira("/api/v1/trading/fundamentals", {"symbol": symbol})
+    if remote:
+        return remote
+
     import yfinance as yf
     yf_symbol = _format_yf_symbol(symbol)
     bursa_code = yf_symbol.replace(".KL", "")
@@ -323,7 +355,16 @@ def screen_stocks(mode: str, shariah_only: bool = False, filters: dict = None, l
     Tapis universe Bursa Malaysia ikut mode (swing/position) & kriteria.
     Return shortlist kaunter berskor. Guna bila user minta 'best saham untuk swing/position'.
     """
+    remote = _delegate_to_amira("/api/v1/trading/screener", {
+        "mode": mode,
+        "shariah_only": shariah_only,
+        "limit": limit
+    })
+    if remote:
+        return remote
+
     mode_clean = mode.lower().strip()
+
     results = []
     
     if mode_clean == "swing":

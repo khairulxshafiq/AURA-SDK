@@ -57,7 +57,30 @@ async def execute_scrape_pipeline(url: str, user_id: int, chat_id: int, context,
     )
 
     # 3. Call LLM (Gemini with key rotation + OpenRouter fallback)
-    generated_text = await call_llm(prompt, timeout=10.0)
+    from config import USE_ADELIA_SERVICE
+    if USE_ADELIA_SERVICE:
+        import tools.adelia_client as adelia_client
+        try:
+            resp = await adelia_client.generate_master(
+                scraped_text=raw_content,
+                title=raw_title,
+                source_url=source_url,
+                image_url=image_url
+            )
+            master_art = resp.get("master_article", "")
+            generated_text = (
+                f"📰 *{raw_title}*\n\n{master_art}\n\n"
+                f"[DRAFT_TITLE: {raw_title}]\n"
+                f"[DRAFT_SOURCE_URL: {source_url}]\n"
+                f"[DRAFT_IMAGE: {image_url}]\n"
+                f"[DRAFT_HASHTAGS: #Sakluma #Berita]\n"
+                f"[DRAFT_MASTER_ARTICLE: {master_art}]"
+            )
+        except Exception as e:
+            logger.error(f"ADELIA generate_master failed, fallback to in-process LLM: {e}")
+            generated_text = await call_llm(prompt, timeout=10.0)
+    else:
+        generated_text = await call_llm(prompt, timeout=10.0)
 
     if not generated_text:
         generated_text = (

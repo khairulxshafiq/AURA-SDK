@@ -1,0 +1,7 @@
+# ADELIA local data directory
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+__pycache__/
+*.pyc
+.env

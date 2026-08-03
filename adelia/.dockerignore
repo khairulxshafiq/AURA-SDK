@@ -1,0 +1,23 @@
+# Exclude virtual environment
+.venv/
+venv/
+# Python bytecode caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# Sensitive environment files
+.env
+# Local runtime databases & logs
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+*.db-journal
+# Git metadata
+.git/
+.gitignore
+# Unit test files
+tests/
+# Cache directories
+.cache/
+.pytest_cache/
